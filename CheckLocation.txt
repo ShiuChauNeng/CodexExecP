@@ -1,0 +1,5 @@
+Get-ChildItem "$env:APPDATA\npm\node_modules\@openai" `
+    -Filter "codex.exe" `
+    -Recurse `
+    -File |
+    Select-Object FullName
