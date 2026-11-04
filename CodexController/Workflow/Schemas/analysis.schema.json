@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string"
+    },
+    "found": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "target",
+    "found",
+    "summary",
+    "evidence",
+    "dependencies",
+    "risks"
+  ],
+  "additionalProperties": false
+}
