@@ -1,12 +1,13 @@
 ﻿using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
-namespace CodexController.Codex;
+namespace CodexClient.Exec.Internal;
 
-public class CodexExecutionObserver : IDisposable
+internal sealed class ExecutionObserver : IDisposable
 {
     // Fields
-    private static readonly ActivitySource ActivitySource = new("CodexController");
+    public const string ActivitySourceName = "CodexClient.Exec";
+    private static readonly ActivitySource ActivitySource = new(ActivitySourceName);
     private readonly Activity? _activity;
     private readonly ILogger _logger;
     private readonly IDisposable? _logScope;
@@ -15,13 +16,24 @@ public class CodexExecutionObserver : IDisposable
 
 
     // Properties
+    /// <summary>
+    /// 取得此次執行的唯一識別碼。
+    /// </summary>
     public Guid ExecutionId { get; } = Guid.NewGuid();
+
+    /// <summary>
+    /// 取得 Codex 工作階段識別碼。
+    /// </summary>
     public string? SessionId { get; private set; }
-    public CodexExecutionState State { get; private set; } = CodexExecutionState.Created;
+
+    /// <summary>
+    /// 取得目前的執行狀態。
+    /// </summary>
+    public ExecutionState State { get; private set; } = ExecutionState.Created;
 
 
     // Constructors
-    public CodexExecutionObserver(ILogger logger)
+    public ExecutionObserver(ILogger logger)
     {
         _logger = logger;
         _logScope = logger.BeginScope("ExecutionId: {ExecutionId}", ExecutionId);
@@ -31,9 +43,13 @@ public class CodexExecutionObserver : IDisposable
 
 
     // Methods
-    public void Record(CodexExecutionEvent executionEvent)
+    /// <summary>
+    /// 記錄一個 Codex 執行事件並更新執行狀態。
+    /// </summary>
+    /// <param name="executionEvent">要記錄的執行事件。</param>
+    public void Record(ExecutionEvent executionEvent)
     {
-        if (State is CodexExecutionState.Completed or CodexExecutionState.Failed or CodexExecutionState.Cancelled or CodexExecutionState.Incomplete)
+        if (State is ExecutionState.Completed or ExecutionState.Failed or ExecutionState.Cancelled or ExecutionState.Incomplete)
         {
             throw new InvalidOperationException("Execution has already ended.");
         }
@@ -47,7 +63,7 @@ public class CodexExecutionObserver : IDisposable
                 break;
 
             case "turn.started":
-                State = CodexExecutionState.Running;
+                State = ExecutionState.Running;
                 _logger.LogInformation("Codex turn started");
                 break;
 
@@ -75,34 +91,40 @@ public class CodexExecutionObserver : IDisposable
         }
     }
 
-    public void Complete(int exitCode)
+    /// <summary>
+    /// 依事件與程序結束代碼完成此次執行。
+    /// </summary>
+    /// <param name="exitCode">Codex 程序的結束代碼。</param>
+    public void Complete(ExecutionOutcome outcome, int exitCode)
     {
-        if (_turnFailed || exitCode != 0)
+        State = outcome switch
         {
-            State = CodexExecutionState.Failed;
-        }
-        else if (_turnCompleted)
+            ExecutionOutcome.Completed or
+            ExecutionOutcome.CompletedWithIssues => ExecutionState.Completed,
+
+            ExecutionOutcome.Incomplete => ExecutionState.Incomplete,
+
+            _ => ExecutionState.Failed
+        };
+
+        _activity?.SetTag("codex.execution.outcome", outcome.ToString());
+        _activity?.SetTag("codex.process.exit_code", exitCode);
+
+        if (State == ExecutionState.Failed)
         {
-            State = CodexExecutionState.Completed;
-        }
-        else
-        {
-            State = CodexExecutionState.Incomplete;
+            _activity?.SetStatus(ActivityStatusCode.Error);
         }
 
-        _activity?.SetTag("codex.execution_state", State.ToString());
-
-        if (State != CodexExecutionState.Completed)
-        {
-            _activity?.SetStatus(ActivityStatusCode.Error, State.ToString());
-        }
-
-        _logger.LogInformation("Codex execution ended: {State}, ExitCode: {ExitCode}", State, exitCode);
+        _logger.LogInformation("Codex execution finished. Outcome: {Outcome}, ExitCode: {ExitCode}", outcome, exitCode);
 
         Dispose();
     }
 
-    private void RecordItemStarted(CodexExecutionEvent executionEvent)
+    /// <summary>
+    /// 記錄命令項目開始執行的事件。
+    /// </summary>
+    /// <param name="executionEvent">項目開始事件。</param>
+    private void RecordItemStarted(ExecutionEvent executionEvent)
     {
         if (executionEvent.ItemType != "command_execution")
         {
@@ -113,7 +135,11 @@ public class CodexExecutionObserver : IDisposable
         _activity?.AddEvent(new ActivityEvent("codex.command.started"));
     }
 
-    private void RecordItemCompleted(CodexExecutionEvent executionEvent)
+    /// <summary>
+    /// 記錄命令項目完成執行的事件。
+    /// </summary>
+    /// <param name="executionEvent">項目完成事件。</param>
+    private void RecordItemCompleted(ExecutionEvent executionEvent)
     {
         if (executionEvent.ItemType != "command_execution")
         {
@@ -124,6 +150,9 @@ public class CodexExecutionObserver : IDisposable
         _activity?.AddEvent(new ActivityEvent("codex.command.completed"));
     }
 
+    /// <summary>
+    /// 釋放執行觀察器使用的追蹤與記錄資源。
+    /// </summary>
     public void Dispose()
     {
         _activity?.Dispose();

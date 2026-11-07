@@ -1,30 +1,46 @@
-﻿using CodexController.Codex;
+﻿using CodexClient.Exec;
 using System.Text.Json;
 
 namespace CodexController.Workflow;
 
+/// <summary>
+/// 執行程式碼分析與結果審查的 Codex 工作流程。
+/// </summary>
 public sealed class CodexWorkflow
 {
     // Fields
-    private readonly Func<string, string, string, CancellationToken, Task<CodexResult>> _executeAsync;
+    private readonly Func<string, string, string, CancellationToken, Task<ExecutionResult>> _executeAsync;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
 
-    // Constructors
-    public CodexWorkflow(CodexRunner runner) : this((workspace, prompt, schema, token) => runner.ExecuteAsync(workspace, prompt,new CodexExecutionOptions() {OutputSchemaPath = schema }, token))
+    /// <summary>
+    /// 使用 Codex 執行器初始化工作流程。
+    /// </summary>
+    /// <param name="runner">用於執行 Codex 的執行器。</param>
+    public CodexWorkflow(CodexRunner runner) : this((workspace, prompt, schema, token) => runner.ExecuteAsync(workspace, prompt, new ExecutionOptions() { OutputSchemaPath = schema }, token))
     {
     }
 
-    public CodexWorkflow(Func<string, string, string, CancellationToken, Task<CodexResult>> executeAsync)
+    /// <summary>
+    /// 使用指定的 Codex 執行委派初始化工作流程。
+    /// </summary>
+    /// <param name="executeAsync">執行工作區、提示與結構描述的非同步委派。</param>
+    public CodexWorkflow(Func<string, string, string, CancellationToken, Task<ExecutionResult>> executeAsync)
     {
         _executeAsync = executeAsync;
     }
 
 
-    // Methods
+    /// <summary>
+    /// 執行分析與審查工作流程。
+    /// </summary>
+    /// <param name="workspaceRoot">要分析的工作區路徑。</param>
+    /// <param name="target">要分析的目標名稱。</param>
+    /// <param name="cancellationToken">用於取消工作流程的權杖。</param>
+    /// <returns>非同步回傳分析與審查結果。</returns>
     public async Task<WorkflowResult> ExecuteAsync(string workspaceRoot, string target, CancellationToken cancellationToken = default)
     {
         string analysisSchema = GetSchemaPath("analysis.schema.json");
@@ -39,7 +55,7 @@ public sealed class CodexWorkflow
             不要修改任何檔案。
             """;
 
-        CodexResult analysisExecution = await _executeAsync(workspaceRoot, analysisPrompt, analysisSchema, cancellationToken);
+        ExecutionResult analysisExecution = await _executeAsync(workspaceRoot, analysisPrompt, analysisSchema, cancellationToken);
         EnsureCompleted(analysisExecution);
         AnalysisResult analysis = Deserialize<AnalysisResult>(analysisExecution.FinalResponse);
         ValidateAnalysis(analysis, target);
@@ -58,7 +74,7 @@ public sealed class CodexWorkflow
             請列出建議與未解決的問題。
             不要修改任何檔案。
             """;
-        CodexResult reviewExecution = await _executeAsync(workspaceRoot, reviewPrompt, reviewSchema, cancellationToken);
+        ExecutionResult reviewExecution = await _executeAsync(workspaceRoot, reviewPrompt, reviewSchema, cancellationToken);
         EnsureCompleted(reviewExecution);
         ReviewResult review = Deserialize<ReviewResult>(reviewExecution.FinalResponse);
         ValidateReview(review);
@@ -66,6 +82,11 @@ public sealed class CodexWorkflow
         return new WorkflowResult(analysis, review);
     }
 
+    /// <summary>
+    /// 驗證程式碼分析結果是否包含必要資料。
+    /// </summary>
+    /// <param name="analysis">要驗證的分析結果。</param>
+    /// <param name="expectedTarget">預期的分析目標名稱。</param>
     public static void ValidateAnalysis(AnalysisResult analysis, string expectedTarget)
     {
         if (!analysis.Found)
@@ -89,6 +110,10 @@ public sealed class CodexWorkflow
         }
     }
 
+    /// <summary>
+    /// 驗證審查結果是否通過且資料完整。
+    /// </summary>
+    /// <param name="review">要驗證的審查結果。</param>
     public static void ValidateReview(ReviewResult review)
     {
         if (!review.Approved)
@@ -107,7 +132,11 @@ public sealed class CodexWorkflow
         }
     }
 
-    private static void EnsureCompleted(CodexResult result)
+    /// <summary>
+    /// 確認 Codex 執行已成功完成。
+    /// </summary>
+    /// <param name="result">要檢查的 Codex 執行結果。</param>
+    private static void EnsureCompleted(ExecutionResult result)
     {
         if (!result.Completed)
         {
@@ -115,6 +144,12 @@ public sealed class CodexWorkflow
         }
     }
 
+    /// <summary>
+    /// 將 Codex 回覆的 JSON 反序列化為指定型別。
+    /// </summary>
+    /// <typeparam name="T">反序列化的目標型別。</typeparam>
+    /// <param name="json">要反序列化的 JSON 字串。</param>
+    /// <returns>反序列化後的物件。</returns>
     private static T Deserialize<T>(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -125,6 +160,11 @@ public sealed class CodexWorkflow
         return JsonSerializer.Deserialize<T>(json, JsonOptions) ?? throw new JsonException("Codex returned a null JSON result.");
     }
 
+    /// <summary>
+    /// 取得工作流程結構描述檔案的完整路徑。
+    /// </summary>
+    /// <param name="fileName">結構描述檔案名稱。</param>
+    /// <returns>結構描述檔案的完整路徑。</returns>
     private static string GetSchemaPath(string fileName)
     {
         return Path.Combine(AppContext.BaseDirectory, "Workflow", "Schemas", fileName);
