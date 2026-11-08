@@ -5,6 +5,9 @@ using CodexClient.Exec.Internal;
 
 namespace CodexClient.Exec;
 
+/// <summary>
+/// 啟動並管理 Codex 命令列程序的執行器。
+/// </summary>
 public sealed class CodexRunner
 {
     // Fields
@@ -13,10 +16,14 @@ public sealed class CodexRunner
 
 
     // Constructors
-    public CodexRunner(ILogger logger)
+    public CodexRunner(ILogger logger, string? executablePath = null)
     {
-        _codexPath = ResolveCodexPath();
         _logger = logger;
+        _codexPath = executablePath ?? ResolveCodexPath();
+        if (!File.Exists(_codexPath))
+        {
+            throw new FileNotFoundException("Codex executable not found.", _codexPath);
+        }
     }
 
 
@@ -31,6 +38,9 @@ public sealed class CodexRunner
     /// <returns>非同步回傳 Codex 執行結果。</returns>
     public async Task<ExecutionResult> ExecuteAsync(string workspaceRoot, string prompt, ExecutionOptions? options = null, CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
+
         options ??= new ExecutionOptions();
         options.Validate();
 
@@ -54,47 +64,54 @@ public sealed class CodexRunner
         };
         ConfigureArguments(startInfo, options);
 
+        using var executionSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (options.Timeout is { } timeout)
+        {
+            executionSource.CancelAfter(timeout);
+        }
+
+        CancellationToken executionToken = executionSource.Token;
         using var process = new Process
         {
             StartInfo = startInfo
         };
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Unable to start Codex.");
-        }
-
-        Task errorTask = ReadErrorsAsync(process.StandardError);
-
         using var observer = new ExecutionObserver(_logger);
-        var events = new List<ExecutionEvent>();
 
+        var events = new List<ExecutionEvent>();
+        bool started = false;
+        Task? errorTask = null;
         try
         {
-            await process.StandardInput.WriteAsync(prompt);
+            executionToken.ThrowIfCancellationRequested();
+            started = process.Start();
+            if (!started)
+            {
+                throw new InvalidOperationException("Unable to start Codex.");
+            }
+
+            errorTask = ReadStandardErrorAsync(process.StandardError, executionToken);
+            await process.StandardInput.WriteAsync(prompt.AsMemory(), executionToken);
+            await process.StandardInput.FlushAsync(executionToken);
             process.StandardInput.Close();
 
             while (true)
             {
-                string? line = await process.StandardOutput.ReadLineAsync(cancellationToken);
+                executionToken.ThrowIfCancellationRequested();
+
+                string? line = await process.StandardOutput.ReadLineAsync(executionToken);
                 if (line is null)
                 {
                     break;
                 }
 
                 ExecutionEvent executionEvent = EventParser.Parse(line);
-
                 events.Add(executionEvent);
                 observer.Record(executionEvent);
 
                 Console.WriteLine($"Event: {executionEvent.Type}");
-
                 if (executionEvent.ItemType == "command_execution")
                 {
                     Console.WriteLine($"Command: {executionEvent.Command}");
-
                     if (executionEvent.ExitCode is int exitCode)
                     {
                         Console.WriteLine($"ExitCode: {exitCode}");
@@ -102,23 +119,45 @@ public sealed class CodexRunner
                 }
             }
 
-            await process.WaitForExitAsync(cancellationToken);
-            await errorTask;
-
-            ExecutionResult result = ExecutionOutcomeEvaluator.Evaluate(process.ExitCode, events);
-            observer.Complete(result.Outcome, result.ExitCode);
-            return result;
-        }
-        catch
-        {
-            if (!process.HasExited)
+            await process.WaitForExitAsync(executionToken);
+            if (errorTask is not null)
             {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync();
+                await errorTask;
             }
 
-            await errorTask;
-            throw;
+            executionToken.ThrowIfCancellationRequested();
+            ExecutionResult result = ExecutionOutcomeEvaluator.Evaluate(process.ExitCode, events);
+            observer.Complete(result.Outcome, result.ExitCode);
+
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            observer.Interrupt(timedOut: false);
+            throw new OperationCanceledException("Codex execution was cancelled.", cancellationToken);
+        }
+        catch (OperationCanceledException) when (executionToken.IsCancellationRequested)
+        {
+            observer.Interrupt(timedOut: true);
+            throw new TimeoutException($"Codex execution exceeded the timeout of {options.Timeout}.");
+        }
+        finally
+        {
+            if (started)
+            {
+                await StopProcessAsync(process);
+                if (errorTask is not null)
+                {
+                    try
+                    {
+                        await errorTask.WaitAsync(TimeSpan.FromSeconds(5));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Codex stderr reader stopped during cleanup.");
+                    }
+                }
+            }
         }
     }
 
@@ -210,39 +249,51 @@ public sealed class CodexRunner
     }
 
     /// <summary>
-    /// 非同步讀取並輸出 Codex 的錯誤輸出內容。
+    /// 非同步讀取並記錄 Codex 的標準錯誤輸出。
     /// </summary>
-    /// <param name="reader">Codex 錯誤輸出資料流讀取器。</param>
+    /// <param name="reader">Codex 標準錯誤輸出的讀取器。</param>
+    /// <param name="cancellationToken">用於取消讀取作業的權杖。</param>
     /// <returns>表示讀取作業的非同步工作。</returns>
-    private static async Task ReadErrorsAsync(StreamReader reader)
+    private async Task ReadStandardErrorAsync(StreamReader reader, CancellationToken cancellationToken)
     {
-        while (await reader.ReadLineAsync() is { } line)
+        while (true)
         {
-            Console.Error.WriteLine(line);
+            string? line = await reader.ReadLineAsync(cancellationToken);
+
+            if (line is null)
+            {
+                break;
+            }
+
+            _logger.LogDebug("Codex stderr: {Message}", line);
         }
     }
 
+    /// <summary>
+    /// 嘗試停止指定的 Codex 程序及其子程序。
+    /// </summary>
+    /// <param name="process">要停止的程序。</param>
+    /// <returns>表示停止作業的非同步工作。</returns>
+    private async Task StopProcessAsync(Process process)
+    {
+        if (process.HasExited)
+        {
+            return;
+        }
 
-    //private static ExecutionOutcome GetExecutionOutcome(int processExitCode, IReadOnlyList<ExecutionEvent> events)
-    //{
-    //    if (processExitCode != 0)
-    //    {
-    //        return ExecutionOutcome.ProcessFailed;
-    //    }
+        try
+        {
+            process.Kill(entireProcessTree: true);
 
-    //    if (events.Any(x => x.Type == "turn.failed"))
-    //    {
-    //        return ExecutionOutcome.TurnFailed;
-    //    }
-
-    //    if (!events.Any(x => x.Type == "turn.completed"))
-    //    {
-    //        return ExecutionOutcome.Incomplete;
-    //    }
-
-    //    bool hasToolFailures = events.Any(x => x.Type == "item.completed" && x.ItemType == "command_execution" && x.ExitCode is int exitCode && exitCode != 0);
-
-    //    return hasToolFailures ? ExecutionOutcome.CompletedWithToolFailures : ExecutionOutcome.Completed;
-    //}
-
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (InvalidOperationException) when (process.HasExited)
+        {
+            // Process 已在 Kill 前自行結束。
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unable to terminate Codex process {ProcessId}.", process.Id);
+        }
+    }
 }

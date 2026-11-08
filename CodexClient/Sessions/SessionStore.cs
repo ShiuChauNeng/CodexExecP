@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace CodexClient.Sessions;
 
@@ -18,15 +19,44 @@ public sealed class SessionStore
 
 
     // Constructors
-    public SessionStore(string? directory = null)
+    public SessionStore(string applicationId, string? baseDirectory = null)
     {
-        _directory = directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MiniCodingAgent", "Sessions");
+        ValidateName(applicationId, nameof(applicationId));
 
+        string rootDirectory = baseDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexClient", "Sessions");
+        _directory = Path.Combine(Path.GetFullPath(rootDirectory), applicationId);
         Directory.CreateDirectory(_directory);
     }
 
 
     // Methods
+    /// <summary>
+    /// 找尋 Session
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="workspaceRoot"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task<SessionLookupResult> FindAsync(string name, string workspaceRoot, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+
+        SessionInfo? session = await LoadAsync(name, cancellationToken);
+        if (session is null)
+        {
+            return new SessionLookupResult(SessionLookupStatus.NotFound, null);
+        }
+
+        string existingWorkspace = Path.TrimEndingDirectorySeparator(Path.GetFullPath(session.WorkspaceRoot));
+        string requestedWorkspace = Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspaceRoot));
+        if (!string.Equals(existingWorkspace, requestedWorkspace, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            return new SessionLookupResult(SessionLookupStatus.WorkspaceConflict, session);
+        }
+
+        return new SessionLookupResult(SessionLookupStatus.Matched, session);
+    }
+
     /// <summary>
     /// 非同步載入指定名稱的工作階段。
     /// </summary>
@@ -36,14 +66,12 @@ public sealed class SessionStore
     public async Task<SessionInfo?> LoadAsync(string name, CancellationToken cancellationToken = default)
     {
         string path = GetSessionPath(name);
-
         if (!File.Exists(path))
         {
             return null;
         }
 
         await using var stream = File.OpenRead(path);
-
         return await JsonSerializer.DeserializeAsync<SessionInfo>(stream, JsonOptions, cancellationToken);
     }
 
@@ -55,9 +83,9 @@ public sealed class SessionStore
     /// <returns>表示儲存作業的非同步工作。</returns>
     public async Task SaveAsync(SessionInfo session, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(session);
         string path = GetSessionPath(session.Name);
-        string temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-
+        string temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
         try
         {
             await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
@@ -66,7 +94,7 @@ public sealed class SessionStore
 
                 await stream.FlushAsync(cancellationToken);
             }
-
+            cancellationToken.ThrowIfCancellationRequested();
             File.Move(temporaryPath, path, overwrite: true);
         }
         finally
@@ -85,7 +113,6 @@ public sealed class SessionStore
     public void Delete(string name)
     {
         string path = GetSessionPath(name);
-
         if (File.Exists(path))
         {
             File.Delete(path);
@@ -100,16 +127,24 @@ public sealed class SessionStore
     /// <exception cref="ArgumentException">工作階段名稱無效時擲出。</exception>
     private string GetSessionPath(string name)
     {
-        if (string.IsNullOrWhiteSpace(name) ||
-            name is "." or ".." ||
-            name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-            name.Contains('/') ||
-            name.Contains('\\'))
-        {
-            throw new ArgumentException("Invalid session name.", nameof(name));
-        }
+        ValidateName(name, nameof(name));
 
         return Path.Combine(_directory, $"{name}.json");
+    }
+
+    /// <summary>
+    /// 驗證名稱合法性
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="parameterName"></param>
+    /// <exception cref="ArgumentException"></exception>
+    private static void ValidateName(string name, string parameterName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (!Regex.IsMatch(name, @"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\z"))
+        {
+            throw new ArgumentException("Name must contain only letters, numbers, underscores or hyphens, and be at most 64 characters.", parameterName);
+        }
     }
 }
 

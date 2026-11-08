@@ -1,13 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace CodexClient.Exec.Internal;
 
-
-namespace CodexClient.Exec.Internal;
-
+/// <summary>
+/// 根據程序結束代碼與事件集合評估 Codex 執行結果。
+/// </summary>
 internal static class ExecutionOutcomeEvaluator
 {
     // Methods
+    /// <summary>
+    /// 評估執行結果並彙整所有失敗資訊。
+    /// </summary>
+    /// <param name="processExitCode">Codex 程序的結束代碼。</param>
+    /// <param name="events">此次執行收到的事件集合。</param>
+    /// <returns>彙整後的執行結果。</returns>
     public static ExecutionResult Evaluate(int processExitCode, IReadOnlyList<ExecutionEvent> events)
     {
         var failures = new List<ExecutionFailure>();
