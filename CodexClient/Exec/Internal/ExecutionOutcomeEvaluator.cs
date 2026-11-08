@@ -11,8 +11,9 @@ internal static class ExecutionOutcomeEvaluator
     /// </summary>
     /// <param name="processExitCode">Codex 程序的結束代碼。</param>
     /// <param name="events">此次執行收到的事件集合。</param>
+    /// <param name="standardError">程序失敗時附加的標準錯誤輸出。</param>
     /// <returns>彙整後的執行結果。</returns>
-    public static ExecutionResult Evaluate(int processExitCode, IReadOnlyList<ExecutionEvent> events)
+    public static ExecutionResult Evaluate(int processExitCode, IReadOnlyList<ExecutionEvent> events, string? standardError = null)
     {
         var failures = new List<ExecutionFailure>();
 
@@ -87,7 +88,13 @@ internal static class ExecutionOutcomeEvaluator
         // 具順序性處理
         if (processExitCode != 0)
         {
-            failures.Add(new ExecutionFailure(ExecutionFailureKind.Process, $"Codex process exited with code {processExitCode}.", ExitCode: processExitCode));
+            string message = $"Codex process exited with code {processExitCode}.";
+            if (!string.IsNullOrWhiteSpace(standardError))
+            {
+                message += $"{Environment.NewLine}stderr:{Environment.NewLine}{standardError}";
+            }
+
+            failures.Add(new ExecutionFailure(ExecutionFailureKind.Process, message, ExitCode: processExitCode));
             outcome = ExecutionOutcome.ProcessFailed;
         }
         else if (hasTurnFailed)

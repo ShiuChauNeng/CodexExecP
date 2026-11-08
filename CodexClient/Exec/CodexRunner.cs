@@ -79,7 +79,7 @@ public sealed class CodexRunner
 
         var events = new List<ExecutionEvent>();
         bool started = false;
-        Task? errorTask = null;
+        Task<string>? errorTask = null;
         try
         {
             executionToken.ThrowIfCancellationRequested();
@@ -120,13 +120,14 @@ public sealed class CodexRunner
             }
 
             await process.WaitForExitAsync(executionToken);
+            string? standardError = null;
             if (errorTask is not null)
             {
-                await errorTask;
+                standardError = await errorTask;
             }
 
             executionToken.ThrowIfCancellationRequested();
-            ExecutionResult result = ExecutionOutcomeEvaluator.Evaluate(process.ExitCode, events);
+            ExecutionResult result = ExecutionOutcomeEvaluator.Evaluate(process.ExitCode, events, standardError);
             observer.Complete(result.Outcome, result.ExitCode);
 
             return result;
@@ -249,13 +250,16 @@ public sealed class CodexRunner
     }
 
     /// <summary>
-    /// 非同步讀取並記錄 Codex 的標準錯誤輸出。
+    /// 非同步讀取並記錄 Codex 的標準錯誤輸出，保留最後 16 Ki 個字元。
     /// </summary>
     /// <param name="reader">Codex 標準錯誤輸出的讀取器。</param>
     /// <param name="cancellationToken">用於取消讀取作業的權杖。</param>
-    /// <returns>表示讀取作業的非同步工作。</returns>
-    private async Task ReadStandardErrorAsync(StreamReader reader, CancellationToken cancellationToken)
+    /// <returns>保留的標準錯誤輸出；截斷時包含提示文字。</returns>
+    private async Task<string> ReadStandardErrorAsync(StreamReader reader, CancellationToken cancellationToken)
     {
+        const int maxCharacters = 16 * 1024;
+        var standardError = new StringBuilder();
+        bool truncated = false;
         while (true)
         {
             string? line = await reader.ReadLineAsync(cancellationToken);
@@ -266,7 +270,31 @@ public sealed class CodexRunner
             }
 
             _logger.LogDebug("Codex stderr: {Message}", line);
+            truncated |= AppendBoundedLine(standardError, line, maxCharacters);
         }
+
+        return truncated
+            ? $"[stderr truncated; showing last {maxCharacters} characters]{Environment.NewLine}{standardError}"
+            : standardError.ToString();
+    }
+
+    /// <summary>
+    /// 附加一行文字，超過長度上限時移除開頭內容以保留尾端文字。
+    /// </summary>
+    /// <param name="buffer">要附加文字的緩衝區。</param>
+    /// <param name="line">要附加的文字。</param>
+    /// <param name="maxCharacters">保留的字元數上限。</param>
+    /// <returns>是否因超過長度上限而截斷內容。</returns>
+    private static bool AppendBoundedLine(StringBuilder buffer, string line, int maxCharacters)
+    {
+        buffer.AppendLine(line);
+        if (buffer.Length <= maxCharacters)
+        {
+            return false;
+        }
+
+        buffer.Remove(0, buffer.Length - maxCharacters);
+        return true;
     }
 
     /// <summary>
