@@ -16,10 +16,7 @@ public sealed class CodexWorkflow
     };
 
 
-    /// <summary>
-    /// 使用 Codex 執行器初始化工作流程。
-    /// </summary>
-    /// <param name="runner">用於執行 Codex 的執行器。</param>
+    // Constructors
     public CodexWorkflow(CodexRunner runner) : this((workspace, prompt, schema, token) => runner.ExecuteAsync(workspace, prompt, new ExecutionOptions() { OutputSchemaPath = schema }, token))
     {
     }
@@ -56,12 +53,12 @@ public sealed class CodexWorkflow
             """;
 
         ExecutionResult analysisExecution = await _executeAsync(workspaceRoot, analysisPrompt, analysisSchema, cancellationToken);
-        EnsureCompleted(analysisExecution);
+        EnsureExecutionSucceeded(analysisExecution);
         AnalysisResult analysis = Deserialize<AnalysisResult>(analysisExecution.FinalResponse);
         ValidateAnalysis(analysis, target);
-        string reviewSchema = GetSchemaPath("review.schema.json");
         string analysisJson = JsonSerializer.Serialize(analysis);
 
+        string reviewSchema = GetSchemaPath("review.schema.json");
         string reviewPrompt = $$"""
             請獨立審查以下分析：
 
@@ -75,7 +72,7 @@ public sealed class CodexWorkflow
             不要修改任何檔案。
             """;
         ExecutionResult reviewExecution = await _executeAsync(workspaceRoot, reviewPrompt, reviewSchema, cancellationToken);
-        EnsureCompleted(reviewExecution);
+        EnsureExecutionSucceeded(reviewExecution);
         ReviewResult review = Deserialize<ReviewResult>(reviewExecution.FinalResponse);
         ValidateReview(review);
 
@@ -133,15 +130,26 @@ public sealed class CodexWorkflow
     }
 
     /// <summary>
-    /// 確認 Codex 執行已成功完成。
+    /// 確認 Codex 執行已完成，並記錄執行過程中的問題。
     /// </summary>
     /// <param name="result">要檢查的 Codex 執行結果。</param>
-    private static void EnsureCompleted(ExecutionResult result)
+    private void EnsureExecutionSucceeded(ExecutionResult result)
     {
-        if (!result.Completed)
+        if (result.Succeeded)
         {
-            throw new InvalidOperationException("Codex execution did not complete.");
+            return;
         }
+
+        string failures = string.Join(Environment.NewLine, result.Failures.Select(x => $"{x.Kind}: {x.Message}"));
+
+        if (result.Completed)
+        {
+            //_logger.LogWarning("Codex completed with issues. Outcome: {Outcome}. Failures: {Failures}", result.Outcome, failures);
+
+            return;
+        }
+
+        throw new InvalidOperationException($"Codex execution failed. Outcome: {result.Outcome}" + Environment.NewLine + failures);
     }
 
     /// <summary>
