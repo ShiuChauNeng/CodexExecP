@@ -1,6 +1,6 @@
 ﻿using CodexClient.Exec;
 using CodexClient.Sessions;
-using CodexController.Workflow;
+using CodexClient.Workflows;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
@@ -24,9 +24,9 @@ try
     // 啟動 Runner
     var runner = new CodexRunner(logger);
 
-    //// Session 取得
+    // Session 取得
     //var store = new SessionStore(applicationId);
-    string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
+    //string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
     //string sessionName = "order-service-analysis";
     //var lookupResult = await store.FindAsync(sessionName, workspaceRoot);
     //SessionInfo? session = null;
@@ -59,21 +59,51 @@ try
 
 
 
+    // Workflow
+    //var workflow = new CodexWorkflow(runner);
+    //string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
+    //WorkflowResult result = await workflow.ExecuteAsync(workspaceRoot, "VerificationTool");
 
-    var workflow = new CodexWorkflow(runner);
+    //Console.WriteLine("===== Analysis =====");
+    //Console.WriteLine(result.Analysis.Summary);
 
-    WorkflowResult result = await workflow.ExecuteAsync(workspaceRoot, "VerificationTool");
+    //Console.WriteLine();
+    //Console.WriteLine("===== Review =====");
+    //Console.WriteLine(result.Review.Summary);
 
-    Console.WriteLine("===== Analysis =====");
-    Console.WriteLine(result.Analysis.Summary);
+    //Console.WriteLine();
+    //Console.WriteLine("Workflow completed.");
 
-    Console.WriteLine();
-    Console.WriteLine("===== Review =====");
-    Console.WriteLine(result.Review.Summary);
+    // Workflows
+    string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
+    var workflow = new CodexWorkflow(runner, loggerFactory.CreateLogger<CodexWorkflow>(), workspaceRoot);
 
-    Console.WriteLine();
-    Console.WriteLine("Workflow completed.");
 
+    var analysisStep = new CodexWorkflowStep("Analysis", "分析 VerificationTool.cs 的邏輯")
+    {
+        Session = Session.Create("analysis"),
+    };
+    var TestStep = new CodexWorkflowStep("Test", "9*9=??");
+    var verifyStep = new CodexWorkflowStep("Verify", "告訴我分析的結果")
+    {
+        Session = Session.Use("analysis"),
+    };
+
+    workflow.Add(analysisStep)
+            .Add(TestStep)
+            .Add(verifyStep);
+
+    WorkflowResult result = await workflow.RunAsync();
+
+    Console.WriteLine($"Workflow Succeeded: {result.Succeeded}");
+
+    foreach (WorkflowStepResult step in result.Steps)
+    {
+        Console.WriteLine($"Step: {step.Name}");
+        Console.WriteLine($"Outcome: {step.Execution.Outcome}");
+        Console.WriteLine($"SessionId: {step.Execution.SessionId}");
+        Console.WriteLine($"Response: {step.Execution.FinalResponse}");
+    }
 
 
 }
