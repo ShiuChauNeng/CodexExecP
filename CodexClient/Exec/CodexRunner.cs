@@ -166,20 +166,35 @@ public sealed class CodexRunner
     /// 尋找最近更新的 Codex 可執行檔案。
     /// </summary>
     /// <returns>Codex 可執行檔案的完整路徑。</returns>
+    /// <summary>
+    /// 依 PATH 順序尋找 Codex 啟動入口。
+    /// </summary>
     private static string ResolveCodexPath()
     {
-        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string[] fileNames = OperatingSystem.IsWindows() ? ["codex.exe", "codex.cmd"] : ["codex"];
 
-        string binPath = Path.Combine(localAppData, "OpenAI", "Codex", "bin");
+        string pathValue = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
 
-        if (!Directory.Exists(binPath))
+        foreach (string entry in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            throw new DirectoryNotFoundException(binPath);
+            string directory = entry.Trim('"');
+            // 避免空白或相對路徑讓工作目錄影響解析結果。
+            if (!Path.IsPathFullyQualified(directory))
+            {
+                continue;
+            }
+
+            foreach (string fileName in fileNames)
+            {
+                string candidate = Path.Combine(directory, fileName);
+                if (File.Exists(candidate))
+                {
+                    return Path.GetFullPath(candidate);
+                }
+            }
         }
 
-        string? codexPath = Directory.EnumerateFiles(binPath, "codex.exe", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
-
-        return codexPath ?? throw new FileNotFoundException("Codex executable not found.", binPath);
+        throw new FileNotFoundException("找不到 Codex。請確認已安裝，並將啟動入口所在目錄加入 PATH，" + "或透過 executablePath 指定完整路徑。");
     }
 
     /// <summary>
