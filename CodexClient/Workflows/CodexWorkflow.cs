@@ -7,14 +7,14 @@ namespace CodexClient.Workflows;
 public sealed class CodexWorkflow
 {
     // Fields
-    private readonly CodexRunner _runner;
+    private readonly CodexExecRunner _runner;
     private readonly ILogger<CodexWorkflow> _logger;
     private readonly string _workspaceRoot;
     private readonly List<CodexWorkflowStep> _steps = [];
 
 
     // Constructors
-    public CodexWorkflow(CodexRunner runner, ILogger<CodexWorkflow> logger, string workspaceRoot)
+    public CodexWorkflow(CodexExecRunner runner, ILogger<CodexWorkflow> logger, string workspaceRoot)
     {
         ArgumentNullException.ThrowIfNull(runner);
         ArgumentNullException.ThrowIfNull(logger);

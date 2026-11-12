@@ -1,14 +1,15 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using CodexClient.Exec.Internal;
+using CodexClient.Internal;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text;
-using CodexClient.Exec.Internal;
 
 namespace CodexClient.Exec;
 
 /// <summary>
 /// 啟動並管理 Codex 命令列程序的執行器。
 /// </summary>
-public sealed class CodexRunner
+public sealed class CodexExecRunner
 {
     // Fields
     private readonly string _codexPath;
@@ -16,14 +17,10 @@ public sealed class CodexRunner
 
 
     // Constructors
-    public CodexRunner(ILogger logger, string? executablePath = null)
+    public CodexExecRunner(ILogger logger, string? executablePath = null)
     {
         _logger = logger;
-        _codexPath = executablePath ?? ResolveCodexPath();
-        if (!File.Exists(_codexPath))
-        {
-            throw new FileNotFoundException("Codex executable not found.", _codexPath);
-        }
+        _codexPath = CodexExecutableResolver.Resolve(executablePath);
     }
 
 
@@ -49,19 +46,7 @@ public sealed class CodexRunner
             throw new DirectoryNotFoundException(workspaceRoot);
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = _codexPath,
-            WorkingDirectory = workspaceRoot,
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardInputEncoding = new UTF8Encoding(false),
-            StandardOutputEncoding = new UTF8Encoding(false),
-            StandardErrorEncoding = new UTF8Encoding(false),
-            CreateNoWindow = true
-        };
+        var startInfo = CodexProcessStartInfoFactory.Create(_codexPath, workspaceRoot);
         ConfigureArguments(startInfo, options);
 
         using var executionSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -160,41 +145,6 @@ public sealed class CodexRunner
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// 尋找最近更新的 Codex 可執行檔案。
-    /// </summary>
-    /// <returns>Codex 可執行檔案的完整路徑。</returns>
-    /// <summary>
-    /// 依 PATH 順序尋找 Codex 啟動入口。
-    /// </summary>
-    private static string ResolveCodexPath()
-    {
-        string[] fileNames = OperatingSystem.IsWindows() ? ["codex.exe", "codex.cmd"] : ["codex"];
-
-        string pathValue = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-
-        foreach (string entry in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            string directory = entry.Trim('"');
-            // 避免空白或相對路徑讓工作目錄影響解析結果。
-            if (!Path.IsPathFullyQualified(directory))
-            {
-                continue;
-            }
-
-            foreach (string fileName in fileNames)
-            {
-                string candidate = Path.Combine(directory, fileName);
-                if (File.Exists(candidate))
-                {
-                    return Path.GetFullPath(candidate);
-                }
-            }
-        }
-
-        throw new FileNotFoundException("找不到 Codex。請確認已安裝，並將啟動入口所在目錄加入 PATH，" + "或透過 executablePath 指定完整路徑。");
     }
 
     /// <summary>

@@ -17,7 +17,7 @@ public sealed class CodexWorkflow
 
 
     // Constructors
-    public CodexWorkflow(CodexRunner runner) : this((workspace, prompt, schema, token) => runner.ExecuteAsync(workspace, prompt, new ExecutionOptions() { OutputSchemaPath = schema }, token))
+    public CodexWorkflow(CodexExecRunner runner) : this((workspace, prompt, schema, token) => runner.ExecuteAsync(workspace, prompt, new ExecutionOptions() { OutputSchemaPath = schema }, token))
     {
     }
 
