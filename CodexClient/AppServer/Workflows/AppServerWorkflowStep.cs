@@ -1,11 +1,13 @@
 namespace CodexClient.AppServer.Workflows;
 
-public sealed class AppServerWorkflowStep
+public class AppServerWorkflowStep
 {
     // Properties
     public string Name { get; }
     public string? Prompt { get; }
     public Func<AppServerWorkflowContext, string>? PromptFactory { get; }
+    /// <summary>步驟被接受後決定下一步名稱；null 沿用 Add 順序，可返回先前步驟。</summary>
+    public Func<AppServerWorkflowContext, string?>? NextStep { get; init; }
     public AppServerThread Thread { get; init; } = AppServerThread.None;
     public AppServerOptions Options { get; init; } = new();
     /// <summary>整個步驟的時間上限，包含建立 thread、等待回答與驗證；可與其他逾時同時使用。</summary>
@@ -41,7 +43,7 @@ public sealed class AppServerWorkflowStep
         (Name, PromptFactory) = (name, promptFactory);
     }
 
-    internal void Validate(string workspaceRoot)
+    internal virtual void Validate(string workspaceRoot)
     {
         ArgumentNullException.ThrowIfNull(Thread);
         ArgumentNullException.ThrowIfNull(Options);

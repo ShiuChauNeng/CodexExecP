@@ -22,6 +22,22 @@ if (args.Contains("app-server"))
     return;
 }
 
+if (args.Contains("--demo-acceptance"))
+{
+    await AcceptanceStepDemo.RunAsync(args.Contains("--always-fail"));
+    return;
+}
+
+if (args.Contains("--acceptance-only"))
+{
+    string acceptanceWorkspace = Directory.GetCurrentDirectory();
+    int acceptanceCount = await AcceptanceChecks.RunAsync(acceptanceWorkspace);
+    acceptanceCount += await WorkflowRoutingChecks.RunAsync(acceptanceWorkspace);
+    acceptanceCount += await AcceptanceStepChecks.RunAsync(acceptanceWorkspace);
+    Console.WriteLine($"Passed {acceptanceCount} acceptance and routing checks.");
+    return;
+}
+
 string workspace = Directory.GetCurrentDirectory();
 int passed = 0;
 await CheckAsync("issues can be accepted without claiming issue-free success", async () =>
@@ -156,6 +172,9 @@ await CheckAsync("transport cancellation closes the client and preserves partial
     catch (ObjectDisposedException) { }
 });
 passed += await NetworkAccessChecks.RunAsync(workspace);
+passed += await AcceptanceChecks.RunAsync(workspace);
+passed += await WorkflowRoutingChecks.RunAsync(workspace);
+passed += await AcceptanceStepChecks.RunAsync(workspace);
 Console.WriteLine($"Passed {passed} checks.");
 
 AppServerWorkflow Workflow(IAppServerClient client,

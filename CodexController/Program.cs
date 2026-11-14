@@ -1,4 +1,5 @@
-﻿using CodexClient.AppServer;
+﻿using CodexClient.Acceptance;
+using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
 using CodexClient.Exec;
 using CodexClient.Sessions;
@@ -112,33 +113,98 @@ try
     await using var client = new CodexAppServerClient();
     await client.StartAsync(workspaceRoot);
 
+    //var handler = new ConsoleWorkflowInputHandler();
+    //var reporter = new ConsoleWorkflowProgressReporter();
+    //AppServerWorkflow workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
+
+    //var analysisStep = new AppServerWorkflowStep("Analysis", "分析 VerificationTool.cs 的邏輯")
+    //{
+    //    Thread = AppServerThread.Create("Analysis"),
+    //    Options = new AppServerOptions
+    //    {
+    //        Sandbox = AppServerSandboxMode.WorkspaceWrite,
+    //        WorkspaceRoot = workspaceRoot
+    //    }
+    //};
+    //var TestStep = new AppServerWorkflowStep("Test", "9*9=??");
+    //var verifyStep = new AppServerWorkflowStep("Verify", "告訴我分析的結果")
+    //{
+    //    Thread = AppServerThread.Use("Analysis")
+    //};
+
+    //workflow.Add(analysisStep).Add(TestStep).Add(verifyStep);
+
+    //workflow.Add(new AppServerAcceptanceStep("Acceptance", "使用驗收 Skill")
+    //{
+    //    FailureSeverity = FindingSeverity.Error,
+    //    MaxFailures = 3,
+    //    RetryStep = "Implement"
+    //});
+
+    //var result = await workflow.RunAsync();
+    //Console.WriteLine($"Result : {result}");
+    //foreach (var step in result.Steps)
+    //{
+    //    Console.WriteLine($"Step: {step.Name}");
+    //    Console.WriteLine($"Error: {step.Error}");
+    //}
+
+    // Test
     var handler = new ConsoleWorkflowInputHandler();
     var reporter = new ConsoleWorkflowProgressReporter();
-    AppServerWorkflow workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
 
-    var analysisStep = new AppServerWorkflowStep("Analysis", "分析 VerificationTool.cs 的邏輯")
+    var writeOptions = new AppServerOptions
     {
-        Thread = AppServerThread.Create("Analysis"),
-        Options = new AppServerOptions
+        Sandbox = AppServerSandboxMode.WorkspaceWrite
+    };
+
+    var workflow = new AppServerWorkflow(
+        client,
+        workspaceRoot,
+        handler.AnswerAsync,
+        reporter);
+
+    workflow
+        .Add(new AppServerWorkflowStep(
+            "Implement",
+            "首次執行時，於 GOGO.txt 寫入 1+1=3，作為驗收測試資料。" +
+"若收到前次驗收失敗的問題與證據，請修正 GOGO.txt 中的算術錯誤。")
         {
-            Sandbox = AppServerSandboxMode.WorkspaceWrite,
-            WorkspaceRoot = workspaceRoot
-        }
-    };
-    var TestStep = new AppServerWorkflowStep("Test", "9*9=??");
-    var verifyStep = new AppServerWorkflowStep("Verify", "告訴我分析的結果")
-    {
-        Thread = AppServerThread.Use("Analysis")
-    };
+            Options = writeOptions
+        })
+        .Add(new AppServerAcceptanceStep(
+            "Acceptance",
+            "讀取 GOGO.txt，檢查其中算術是否正確。" +
+"算術錯誤列為 Error；正確則回報 Passed。" +
+"每個檢查項目都要提供檔案內容作為證據。" +
+"驗收正常完成時 state=completed，驗收資料放在 data，" +
+"並依指示產生驗收報表。")
+        {
+            Options = writeOptions,
+            FailureSeverity = FindingSeverity.Error,
+            MaxFailures = 3,
+            RetryStep = "Implement"
+        })
+        .Add(new AppServerWorkflowStep(
+            "Style",
+            "將 GOGO.txt 內容複製兩次")
+        {
+            Options = writeOptions
+        });
 
-    workflow.Add(analysisStep).Add(TestStep).Add(verifyStep);
     var result = await workflow.RunAsync();
-    Console.WriteLine($"Result : {result}");
+
+    Console.WriteLine($"流程成功：{result.Succeeded}");
+
     foreach (var step in result.Steps)
     {
-        Console.WriteLine($"Step: {step.Name}");
-        Console.WriteLine($"Error: {step.Error}");
+        Console.WriteLine(
+            $"{step.Name}：" +
+            $"通過={step.Accepted}，" +
+            $"驗收結果={step.AcceptanceDecision}，" +
+            $"累計失敗={step.FailureCount}");
     }
+
 
 }
 catch (Exception ex)

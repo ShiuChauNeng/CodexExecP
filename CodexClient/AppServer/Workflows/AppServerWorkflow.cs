@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using CodexClient.Acceptance;
+using System.Text.Json;
 
 namespace CodexClient.AppServer.Workflows;
 
 /// <summary>
-/// 依序執行 App Server 步驟。呼叫端負責啟動與釋放 client，執行期間應獨占該 client。
+/// 依加入順序或 NextStep 指定的方向執行步驟。呼叫端負責啟動與釋放 client，執行期間應獨占該 client。
 /// 每次 RunAsync 建立新的 thread 對應表，不提供跨程序的 workflow 恢復功能。
 /// </summary>
 public sealed class AppServerWorkflow
@@ -86,25 +88,92 @@ public sealed class AppServerWorkflow
             ValidatePlan(steps);
             var results = new List<AppServerWorkflowStepResult>();
             var threads = new Dictionary<string, string>(StringComparer.Ordinal);
+            var failures = new Dictionary<string, int>(StringComparer.Ordinal);
+            var indices = steps.Select((step, index) => (step.Name, index)).ToDictionary(pair => pair.Name, pair => pair.index, StringComparer.Ordinal);
 
-            foreach (var step in steps)
+            int nextIndex = 0;
+            AppServerWorkflowStepResult? retryFeedback = null;
+            while (nextIndex < steps.Length)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                AppServerWorkflowStepResult result = await ExecuteStepAsync(step, results, threads, progress, cancellationToken);
-                bool accepted = result.Completed && (!step.StopOnIssues || !result.HasIssues);
-                result = result with { Accepted = accepted };
+                var step = steps[nextIndex];
+                AppServerWorkflowStepResult result = await ExecuteStepAsync(step, results, threads, progress, cancellationToken, retryFeedback);
+                retryFeedback = null;
+                bool taskAccepted = result.Completed && (!step.StopOnIssues || !result.HasIssues);
+                int failureCount = failures.GetValueOrDefault(step.Name);
+                if (taskAccepted && result.AcceptanceDecision == AcceptanceDecision.NeedsRevision)
+                {
+                    failures[step.Name] = ++failureCount;
+                }
+                bool accepted = taskAccepted && (result.AcceptanceDecision is null or AcceptanceDecision.Passed);
+                result = result with { Accepted = accepted, FailureCount = failureCount };
                 results.Add(result);
 
                 ReportStepResult(result, accepted, progress);
-                if (!accepted)
+                if (!taskAccepted)
                 {
                     progress.Update(AppServerWorkflowStatus.Stopped, $"Workflow 停止於 {step.Name}。", step.Name, result.ThreadId);
-                    return Finish(false, step.Name, results, threads);
+                    return Finish(false, step.Name, results, threads, result.Error);
                 }
 
                 if (step.Thread.Mode == AppServerThreadMode.Create)
                 {
-                    threads.Add(step.Thread.Key!, result.ThreadId!);
+                    // 返回 Create 步驟時建立新 thread，後續 Use 取得最新的對應。
+                    threads[step.Thread.Key!] = result.ThreadId!;
+                }
+
+                if (step is AppServerAcceptanceStep acceptance)
+                {
+                    if (result.AcceptanceDecision == AcceptanceDecision.Inconclusive)
+                    {
+                        progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name} 無法完成驗收，需要確認。", step.Name, result.ThreadId);
+                        return Finish(false, step.Name, results, threads);
+                    }
+
+                    if (result.AcceptanceDecision == AcceptanceDecision.NeedsRevision)
+                    {
+                        if (failureCount >= acceptance.MaxFailures)
+                        {
+                            var error = new InvalidOperationException($"Acceptance step '{step.Name}' reached its failure limit ({acceptance.MaxFailures}). Failures: {failureCount}.");
+                            progress.Update(AppServerWorkflowStatus.Stopped, error.Message, step.Name, result.ThreadId);
+                            return Finish(false, step.Name, results, threads, error);
+                        }
+
+                        nextIndex = indices[acceptance.RetryStep];
+                        retryFeedback = result;
+                        progress.Update(AppServerWorkflowStatus.Running, $"{step.Name} 驗收不通過，返回 {acceptance.RetryStep}（累計失敗 {failureCount} 次）。", step.Name, result.ThreadId);
+                        continue;
+                    }
+                }
+
+                int sequentialIndex = nextIndex + 1;
+                try
+                {
+                    string? target = step.NextStep?.Invoke(CreateContext(results, threads));
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (target is null)
+                    {
+                        nextIndex = sequentialIndex;
+                    }
+                    else
+                    {
+                        if (!indices.TryGetValue(target, out int targetIndex))
+                        {
+                            throw new InvalidOperationException($"Step '{step.Name}' selected an unknown next step: '{target}'.");
+                        }
+                        nextIndex = targetIndex;
+                        progress.Update(AppServerWorkflowStatus.Running,
+                            $"由 {step.Name} 前往 {target}。", step.Name, result.ThreadId);
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    progress.Update(AppServerWorkflowStatus.Faulted, $"步驟分流失敗：{ex.Message}", step.Name, result.ThreadId);
+                    return Finish(false, step.Name, results, threads, ex);
                 }
             }
             progress.Update(AppServerWorkflowStatus.Completed, $"Workflow 已完成，共 {results.Count} 個步驟。");
@@ -140,10 +209,12 @@ public sealed class AppServerWorkflow
         List<AppServerWorkflowStepResult> results,
         Dictionary<string, string> threads,
         WorkflowProgressScope progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        AppServerWorkflowStepResult? acceptanceFeedback = null)
     {
         string? threadId = null;
         TaskRunResult? execution = null;
+        AcceptanceDecision? acceptanceDecision = null;
         Exception? error = null;
 
         using var stepCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -162,6 +233,25 @@ public sealed class AppServerWorkflow
         {
             string prompt = CreatePrompt(step, results, threads);
             ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
+            if (acceptanceFeedback is not null)
+            {
+                prompt += "\n\n前次驗收不通過，請依下列問題、證據與建議修正，完成後將再次驗收：\n" +
+                    JsonSerializer.Serialize(new
+                    {
+                        acceptanceStep = acceptanceFeedback.Name,
+                        failureCount = acceptanceFeedback.FailureCount,
+                        acceptance = acceptanceFeedback.Execution!.Data
+                    });
+            }
+            if (step is AppServerAcceptanceStep acceptanceStep)
+            {
+                prompt += "\n\n驗收正常執行完成時 state=completed；產品缺陷放在 data.findings。" +
+                    "所有驗收項目均須回報狀態及證據，無法判斷時使用 NotEvaluated，不可自行當成通過。";
+                if (acceptanceStep.RequiredCriterionIds.Count > 0)
+                {
+                    prompt += "\n必要驗收項目 ID：" + JsonSerializer.Serialize(acceptanceStep.RequiredCriterionIds);
+                }
+            }
             progress.Update(AppServerWorkflowStatus.CreatingThread, step.Thread.Mode == AppServerThreadMode.Use ? "準備使用既有 thread。" : "正在建立 thread。", step.Name);
             threadId = step.Thread.Mode == AppServerThreadMode.Use ? threads[step.Thread.Key!] : await _client.StartThreadAsync(_workspaceRoot, token).WaitAsync(token);
             ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
@@ -195,6 +285,10 @@ public sealed class AppServerWorkflow
                     }
                 },
                 step.Options with { WorkspaceRoot = _workspaceRoot }, step.DataSchema, token, diagnostics.Add);
+            if (step is AppServerAcceptanceStep acceptance)
+            {
+                acceptanceDecision = acceptance.Evaluate(execution);
+            }
             if (step.ValidateCompletionAsync is not null)
             {
                 progress.Update(AppServerWorkflowStatus.Validating, "AI 已回覆，正在驗證產出。", step.Name, threadId);
@@ -231,7 +325,8 @@ public sealed class AppServerWorkflow
         }
         return new(step.Name, threadId, execution, error)
         {
-            Diagnostics = Array.AsReadOnly(diagnostics.ToArray())
+            Diagnostics = Array.AsReadOnly(diagnostics.ToArray()),
+            AcceptanceDecision = acceptanceDecision
         };
     }
 
@@ -243,12 +338,14 @@ public sealed class AppServerWorkflow
             return step.Prompt!;
         }
 
-        // 只有動態 Prompt 需要當下的固定 Context；後續步驟不能改變保留下來的 Context。
-        var context = new AppServerWorkflowContext(Array.AsReadOnly(results.ToArray()),
-            new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(threads, StringComparer.Ordinal)));
-
-        return step.PromptFactory(context);
+        return step.PromptFactory(CreateContext(results, threads));
     }
+
+    // Prompt 與分流 callback 取得固定快照，後續執行不會改變已保留的 Context。
+    private static AppServerWorkflowContext CreateContext(
+        List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads)
+        => new(Array.AsReadOnly(results.ToArray()),
+            new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(threads, StringComparer.Ordinal)));
 
     private async Task<IReadOnlyList<string>> AnswerQuestionsAsync(string stepName,
         TaskInputRequest request, WorkflowProgressScope progress, CancellationToken cancellationToken)
@@ -274,6 +371,18 @@ public sealed class AppServerWorkflow
         if (result.Error is not null)
         {
             message = $"步驟失敗：{result.Error.Message}";
+        }
+        else if (!accepted && result.HasIssues)
+        {
+            message = $"步驟有未解決問題：{string.Join("；", result.Execution!.Issues)}";
+        }
+        else if (result.AcceptanceDecision == AcceptanceDecision.NeedsRevision)
+        {
+            message = $"驗收不通過，累計失敗 {result.FailureCount} 次。";
+        }
+        else if (result.AcceptanceDecision == AcceptanceDecision.Inconclusive)
+        {
+            message = "驗收尚未完成或無法判斷。";
         }
         else if (!accepted)
         {
@@ -318,9 +427,19 @@ public sealed class AppServerWorkflow
                 throw new InvalidOperationException($"Thread '{step.Thread.Key}' must be created before step '{step.Name}'.");
             }
         }
+        foreach (var acceptance in steps.OfType<AppServerAcceptanceStep>())
+        {
+            if (!names.Contains(acceptance.RetryStep))
+            {
+                throw new InvalidOperationException($"Acceptance step '{acceptance.Name}' refers to an unknown retry step: '{acceptance.RetryStep}'.");
+            }
+        }
     }
 
-    private static AppServerWorkflowResult Finish(bool succeeded, string? failedStep, List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads)
+    private static AppServerWorkflowResult Finish(bool succeeded, string? failedStep, List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads, Exception? error = null)
         // 回傳後這次執行不再變更 threads，唯讀包裝即可，不需再複製。
-        => new(succeeded, failedStep, Array.AsReadOnly(results.ToArray()), new ReadOnlyDictionary<string, string>(threads));
+        => new(succeeded, failedStep, Array.AsReadOnly(results.ToArray()), new ReadOnlyDictionary<string, string>(threads))
+        {
+            Error = error
+        };
 }
