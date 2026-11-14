@@ -1,6 +1,6 @@
-﻿
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
+using System.Text;
 using CodexClient.Internal;
 
 namespace CodexClient.AppServer;
@@ -12,19 +12,28 @@ internal sealed class AppServerConnection : IAsyncDisposable
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly Dictionary<long, TaskCompletionSource<JsonElement>> _pending = [];
     private readonly object _sync = new();
+    private readonly StringBuilder _standardError = new();
+    private bool _standardErrorTruncated;
+
+    /// <summary>連線層級 stderr 尾端，可能包含先前 turn 的內容。</summary>
+    internal string StandardError
+    {
+        get
+        {
+            lock (_standardError)
+                return (_standardErrorTruncated ? "[stderr truncated; showing last 16384 characters]\n" : "") + _standardError;
+        }
+    }
 
     private Task? _readTask;
     private Task? _errorTask;
     private long _requestId;
     private bool _started;
     private int _disposed;
+    private Exception? _failure;
 
     public event Action<AppServerEvent>? NotificationReceived;
     public Task Completion => _readTask ?? throw new InvalidOperationException("Connection has not started.");
-
-
-    // Properties
-    internal Func<JsonElement, CancellationToken, Task<object>>? UserInputHandler { get; set; }
 
 
     // Constructors
@@ -32,9 +41,6 @@ internal sealed class AppServerConnection : IAsyncDisposable
     {
         string codexPath = CodexExecutableResolver.Resolve(executablePath);
         var startInfo = CodexProcessStartInfoFactory.Create(codexPath);
-        startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add("features.default_mode_request_user_input=true");
-
         startInfo.ArgumentList.Add("app-server");
         _process = new Process
         {
@@ -63,21 +69,41 @@ internal sealed class AppServerConnection : IAsyncDisposable
 
         _readTask = ReadLoopAsync();
 
-        // 排空 stderr，避免 Pipe Buffer 填滿。
-        _errorTask = _process.StandardError.BaseStream.CopyToAsync(Stream.Null);
+        // 持續排空 stderr，保留有限長度的尾端供診斷。
+        _errorTask = ReadStandardErrorAsync();
 
         return Task.CompletedTask;
     }
 
+
+    private async Task ReadStandardErrorAsync()
+    {
+        var buffer = new char[2048];
+        int count;
+        while ((count = await _process.StandardError.ReadAsync(buffer.AsMemory())) > 0)
+        {
+            lock (_standardError)
+            {
+                _standardError.Append(buffer, 0, count);
+                if (_standardError.Length > 16384)
+                {
+                    _standardError.Remove(0, _standardError.Length - 16384);
+                    _standardErrorTruncated = true;
+                }
+            }
+        }
+    }
+
+    // 主要
     public async Task<JsonElement> SendRequestAsync(string method, object parameters, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
-        EnsureRunning();
-
         long id = Interlocked.Increment(ref _requestId);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_sync)
         {
+            // 與讀取迴圈的失敗清理使用同一把鎖，避免失敗後才新增永遠等不到回覆的 Request。
+            EnsureRunning();
             _pending.Add(id, completion);
         }
 
@@ -119,6 +145,7 @@ internal sealed class AppServerConnection : IAsyncDisposable
         await _writeLock.WaitAsync(cancellationToken);
         try
         {
+            EnsureRunning();
             await _process.StandardInput.WriteLineAsync(json.AsMemory(), cancellationToken);
             await _process.StandardInput.FlushAsync(cancellationToken);
         }
@@ -155,26 +182,17 @@ internal sealed class AppServerConnection : IAsyncDisposable
                 {
                     string method = methodElement.GetString() ?? throw new JsonException("Method is null.");
 
-                    // Server 主動要求 Client 回覆的 Request。
-                    //if (root.TryGetProperty("id", out var serverRequestId))
-                    //{
-                    //    await SendAsync(new
-                    //    {
-                    //        id = serverRequestId.Clone(),
-                    //        error = new
-                    //        {
-                    //            code = -32601,
-                    //            message = "Server request is not supported."
-                    //        }
-                    //    }, CancellationToken.None);
-
-                    //    continue;
-                    //}
-
-                    if (root.TryGetProperty("id", out _))
+                    if (root.TryGetProperty("id", out var serverRequestId))
                     {
-                        // 不可以在 ReadLoop 直接 await 使用者輸入。
-                        _ = HandleServerRequestAsync(root.Clone());
+                        await SendAsync(new
+                        {
+                            id = serverRequestId.Clone(),
+                            error = new
+                            {
+                                code = -32601,
+                                message = "Server request is not supported by this client."
+                            }
+                        }, CancellationToken.None);
                         continue;
                     }
 
@@ -225,6 +243,7 @@ internal sealed class AppServerConnection : IAsyncDisposable
             failure ??= new EndOfStreamException("App Server connection closed.");
             lock (_sync)
             {
+                _failure = failure;
                 foreach (var completion in _pending.Values)
                 {
                     completion.TrySetException(failure);
@@ -241,9 +260,17 @@ internal sealed class AppServerConnection : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
 
-        if (!_started || _process.HasExited)
+        lock (_sync)
         {
-            throw new InvalidOperationException("App Server is not running.");
+            if (_failure is not null)
+            {
+                throw new IOException("App Server connection has stopped reading messages.", _failure);
+            }
+
+            if (!_started || _process.HasExited)
+            {
+                throw new InvalidOperationException("App Server is not running.");
+            }
         }
     }
 
@@ -288,54 +315,5 @@ internal sealed class AppServerConnection : IAsyncDisposable
             _process.Dispose();
             _writeLock.Dispose();
         }
-    }
-
-    private async Task HandleServerRequestAsync(JsonElement request)
-    {
-        JsonElement requestId = request.GetProperty("id");
-        string method = request.GetProperty("method").GetString()!;
-
-        try
-        {
-            if (method != "item/tool/requestUserInput" || UserInputHandler is null)
-            {
-                throw new NotSupportedException($"Unsupported server request: {method}");
-            }
-            JsonElement parameters = request.GetProperty("params");
-            object result = await UserInputHandler(parameters, CancellationToken.None);
-
-            Console.WriteLine($"[UserInput] Request received: {parameters.GetRawText()}");
-
-            await SendResponseAsync(requestId, result, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            try
-            {
-                await SendAsync(new
-                {
-                    id = requestId,
-                    error = new
-                    {
-                        code = -32603,
-                        message = ex.Message
-                    }
-                }, CancellationToken.None);
-            }
-            catch
-            {
-                // Connection 可能已經關閉。
-                // 不讓背景 Request Task 產生未觀察的例外。
-            }
-        }
-    }
-
-    private Task SendResponseAsync(JsonElement requestId, object result, CancellationToken cancellationToken)
-    {
-        return SendAsync(new
-        {
-            id = requestId,
-            result
-        }, cancellationToken);
     }
 }

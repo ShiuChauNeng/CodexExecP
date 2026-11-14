@@ -4,25 +4,31 @@ using System.Text.Json;
 
 namespace CodexClient.AppServer;
 
-public sealed class CodexAppServerClient : IAsyncDisposable
+public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 {
     // Fields
     private readonly AppServerConnection _connection;
     private readonly SemaphoreSlim _turnLock = new(1, 1);
+    private AppServerTurnDiagnostics? _lastTurnDiagnostics;
+
+    /// <summary>最近一次 turn 的診斷快照，失敗或取消後仍可讀取。</summary>
+    public AppServerTurnDiagnostics? LastTurnDiagnostics
+    {
+        get => Volatile.Read(ref _lastTurnDiagnostics);
+        private set => Volatile.Write(ref _lastTurnDiagnostics, value);
+    }
+
+    /// <summary>連線層級 stderr 尾端，最多保留 16384 個字元及截斷提示。</summary>
+    public string StandardError => _connection.StandardError;
 
     private bool _initialized;
     private int _disposed;
-
-
-    // Properties
-    public Func<UserInputRequest, CancellationToken, Task<IReadOnlyDictionary<string, string[]>>>? UserInputRequested { get; set; }
 
 
     // Constructors
     public CodexAppServerClient(string? executablePath = null)
     {
         _connection = new AppServerConnection(executablePath);
-        _connection.UserInputHandler = HandleUserInputAsync;
     }
 
 
@@ -30,7 +36,6 @@ public sealed class CodexAppServerClient : IAsyncDisposable
     public async Task StartAsync(string applicationName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
-
         if (_initialized)
         {
             throw new InvalidOperationException("App Server has already been initialized.");
@@ -47,13 +52,10 @@ public sealed class CodexAppServerClient : IAsyncDisposable
                         name = applicationName,
                         title = applicationName,
                         version = "1.0.0"
-                    },
-                    capabilities = new
-                    {
-                        experimentalApi = true
                     }
                 },
                 cancellationToken);
+
             await _connection.SendNotificationAsync("initialized", cancellationToken);
             _initialized = true;
         }
@@ -68,7 +70,6 @@ public sealed class CodexAppServerClient : IAsyncDisposable
     {
         EnsureInitialized();
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
-
         if (!Directory.Exists(workspaceRoot))
         {
             throw new DirectoryNotFoundException(workspaceRoot);
@@ -86,30 +87,59 @@ public sealed class CodexAppServerClient : IAsyncDisposable
         return result.GetProperty("thread").GetProperty("id").GetString() ?? throw new JsonException("Thread ID is missing.");
     }
 
-    public async Task<TurnResult> RunTurnAsync(string threadId, string prompt, CancellationToken cancellationToken = default)
+    public async Task<TurnResult> RunTurnAsync(
+        string threadId,
+        string prompt,
+        JsonElement? outputSchema = null,
+        AppServerOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
         ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
+        options ??= new();
+        Dictionary<string, object?> parameters = options.CreateParameters(threadId, prompt, outputSchema);
 
         await _turnLock.WaitAsync(cancellationToken);
-
+        var items = new List<JsonElement>();
+        var errors = new List<JsonElement>();
+        var diagnosticsSync = new object();
+        string? currentTurnId = null;
+        LastTurnDiagnostics = null;
+        AppServerTurnDiagnostics Snapshot()
+        {
+            lock (diagnosticsSync)
+                return new(threadId, currentTurnId,
+                    Array.AsReadOnly(items.ToArray()), Array.AsReadOnly(errors.ToArray()), StandardError);
+        }
         try
         {
             var turnCompletion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-
             var response = new StringBuilder();
             string? finalResponse = null;
-
             void OnNotification(AppServerEvent notification)
             {
                 JsonElement parameters = notification.Params;
-
-                if (parameters.ValueKind != JsonValueKind.Object ||
-                    !parameters.TryGetProperty("threadId", out var threadValue) ||
-                    threadValue.GetString() != threadId)
+                if (parameters.ValueKind != JsonValueKind.Object || !parameters.TryGetProperty("threadId", out var threadValue) || threadValue.GetString() != threadId)
                 {
                     return;
+                }
+
+                if (notification.Method == "item/completed" && parameters.TryGetProperty("item", out var completedItem))
+                {
+                    lock (diagnosticsSync)
+                    {
+                        items.Add(completedItem.Clone());
+                        LastTurnDiagnostics = Snapshot();
+                    }
+                }
+                if (notification.Method == "error")
+                {
+                    lock (diagnosticsSync)
+                    {
+                        errors.Add(parameters.Clone());
+                        LastTurnDiagnostics = Snapshot();
+                    }
                 }
 
                 if (notification.Method == "item/agentMessage/delta" && parameters.TryGetProperty("delta", out var delta))
@@ -137,25 +167,16 @@ public sealed class CodexAppServerClient : IAsyncDisposable
 
             try
             {
-                JsonElement result = await _connection.SendRequestAsync("turn/start",
-                    new
-                    {
-                        threadId,
-                        input = new[]
-                        {
-                            new
-                            {
-                                type = "text",
-                                text = prompt
-                            }
-                        }
-                    },
-                    cancellationToken);
-
+                JsonElement result = await _connection.SendRequestAsync("turn/start", parameters, cancellationToken);
                 string turnId = result.GetProperty("turn").GetProperty("id").GetString() ?? throw new JsonException("Turn ID is missing.");
 
+                lock (diagnosticsSync)
+                {
+                    currentTurnId = turnId;
+                    LastTurnDiagnostics = Snapshot();
+                }
                 // 同時等待 Turn 完成或底層連線終止。
-                Task finished = await Task.WhenAny(turnCompletion.Task, _connection.Completion);
+                Task finished = await Task.WhenAny(turnCompletion.Task, _connection.Completion).WaitAsync(cancellationToken);
                 if (finished == _connection.Completion)
                 {
                     await _connection.Completion;
@@ -174,7 +195,13 @@ public sealed class CodexAppServerClient : IAsyncDisposable
                     threadId,
                     turnId,
                     status,
-                    finalResponse ?? response.ToString());
+                    finalResponse ?? response.ToString())
+                {
+                    Diagnostics = Snapshot(),
+                    Error = completed.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null
+                        ? error.ToString()
+                        : null
+                };
             }
             finally
             {
@@ -190,6 +217,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable
         }
         finally
         {
+            LastTurnDiagnostics = Snapshot();
             _turnLock.Release();
         }
     }
@@ -214,57 +242,4 @@ public sealed class CodexAppServerClient : IAsyncDisposable
     }
 
 
-    private async Task<object> HandleUserInputAsync(JsonElement parameters, CancellationToken cancellationToken)
-    {
-        if (UserInputRequested is null)
-        {
-            throw new NotSupportedException("User input handler has not been configured.");
-        }
-
-        var request = JsonSerializer.Deserialize<UserInputRequest>(
-            parameters,
-            new JsonSerializerOptions(JsonSerializerDefaults.Web))
-            ?? throw new JsonException("Invalid user input request.");
-
-        IReadOnlyDictionary<string, string[]> answers = await UserInputRequested(request, cancellationToken);
-        ArgumentNullException.ThrowIfNull(answers);
-        var response = new Dictionary<string, object>();
-        foreach (var question in request.Questions)
-        {
-            if (!answers.TryGetValue(question.Id, out var values) ||
-                values is null ||
-                values.Length == 0)
-            {
-                throw new InvalidOperationException($"Answer is missing: {question.Id}");
-            }
-
-            response.Add(question.Id, new
-            {
-                answers = values
-            });
-        }
-
-        return new
-        {
-            answers = response
-        };
-    }
-
-
-    public async Task<JsonElement> GetExperimentalFeaturesAsync(
-    CancellationToken cancellationToken = default)
-    {
-        EnsureInitialized();
-
-        return await _connection.SendRequestAsync(
-            "experimentalFeature/list",
-            new
-            {
-                cursor = (string?)null,
-                limit = (int?)null,
-                threadId = (string?)null
-            },
-            cancellationToken);
-    }
 }
-

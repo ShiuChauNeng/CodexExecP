@@ -1,4 +1,5 @@
 ﻿using CodexClient.AppServer;
+using CodexClient.AppServer.Workflows;
 using CodexClient.Exec;
 using CodexClient.Sessions;
 using CodexClient.Workflows;
@@ -109,69 +110,30 @@ try
 
     string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
     await using var client = new CodexAppServerClient();
+    await client.StartAsync(workspaceRoot);
 
-    client.UserInputRequested = (request, cancellationToken) =>
+    var handler = new ConsoleWorkflowInputHandler();
+    var reporter = new ConsoleWorkflowProgressReporter();
+    AppServerWorkflow workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
+
+    var analysisStep = new AppServerWorkflowStep("Analysis", "分析 VerificationTool.cs 的邏輯")
     {
-        var answers = new Dictionary<string, string[]>();
-
-        foreach (var question in request.Questions)
-        {
-            Console.WriteLine();
-            Console.WriteLine(question.Question);
-
-            if (question.Options is not null)
-            {
-                for (int i = 0; i < question.Options.Count; i++)
-                {
-                    Console.WriteLine($"{i + 1}. {question.Options[i].Label}");
-                }
-            }
-
-            Console.Write("請輸入答案：");
-
-            string answer = Console.ReadLine() ?? throw new OperationCanceledException("使用者未提供答案。");
-            answers.Add(question.Id, [answer]);
-        }
-
-        return Task.FromResult<IReadOnlyDictionary<string, string[]>>(answers);
+        Thread = AppServerThread.Create("Analysis")
+    };
+    var TestStep = new AppServerWorkflowStep("Test", "9*9=??");
+    var verifyStep = new AppServerWorkflowStep("Verify", "告訴我分析的結果")
+    {
+        Thread = AppServerThread.Use("Analysis")
     };
 
-    await client.StartAsync("MiniCodingAgent");
-
-    string threadId = await client.StartThreadAsync(workspaceRoot);
-
-    TurnResult result = await client.RunTurnAsync(
-        threadId,
-        """
-    我需要你實作一個訂單取消功能。
-
-    但有一項尚未決定的業務規則：
-    訂單取消後，是否允許重新送出？
-
-    這項決策必須由使用者決定。
-    在得到答案前，不要自行選擇業務規則，
-    也不要修改任何程式碼。
-
-    如果 request_user_input 工具可用，
-    請使用該工具向使用者詢問。
-    """);
-
-    JsonElement features =    await client.GetExperimentalFeaturesAsync();
-    Console.WriteLine(features.GetRawText());
-
-    Console.WriteLine($"Status: {result.Status}");
-    Console.WriteLine(result.Response);
-
-
-
-
-
-
-
-
-
-
-
+    workflow.Add(analysisStep).Add(TestStep).Add(verifyStep);
+    var result = await workflow.RunAsync();
+    Console.WriteLine($"Result : {result}");
+    foreach (var step in result.Steps)
+    {
+        Console.WriteLine($"Step: {step.Name}");
+        Console.WriteLine($"Error: {step.Error}");
+    }
 
 }
 catch (Exception ex)
