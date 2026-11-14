@@ -3,7 +3,10 @@ using CodexClient.Acceptance;
 
 namespace CodexClient.AppServer.Workflows;
 
-/// <summary>依驗收結果自動判斷通過、返回修正或停止；可直接加入 AppServerWorkflow。</summary>
+/// <summary>
+/// 依結構化驗收結果自動判斷通過、返回修正或停止；可直接加入 AppServerWorkflow。
+/// 預設保留外層 issues 作為問題資訊，不據此停止；可明確設定 StopOnIssues=true 增加停止條件。
+/// </summary>
 public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
 {
     /// <summary>此等級以上視為失敗；Error 最嚴重，Info 最輕微。</summary>
@@ -17,14 +20,14 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
     public AppServerAcceptanceStep(string name, string prompt) : base(name, prompt)
     {
         DataSchema = AcceptanceResultSchema.Value;
-        StopOnIssues = true;
+        StopOnIssues = false;
     }
 
     public AppServerAcceptanceStep(string name, Func<AppServerWorkflowContext, string> promptFactory)
         : base(name, promptFactory)
     {
         DataSchema = AcceptanceResultSchema.Value;
-        StopOnIssues = true;
+        StopOnIssues = false;
     }
 
     internal AcceptanceDecision Evaluate(TaskRunResult execution)

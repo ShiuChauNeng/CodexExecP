@@ -111,7 +111,7 @@ public sealed record AcceptanceResult(
 
         Validate();
         var checks = Checks.ToDictionary(check => check.CriterionId, StringComparer.Ordinal);
-        if (requiredCriterionIds.Any(id => !checks.TryGetValue(id, out var check) || check.Status == AcceptanceCheckStatus.NotEvaluated))
+        if (requiredCriterionIds.Any(id => !checks.ContainsKey(id)))
         {
             return AcceptanceDecision.Inconclusive;
         }

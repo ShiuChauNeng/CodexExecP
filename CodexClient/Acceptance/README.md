@@ -37,8 +37,9 @@ C# 只驗證資料完整性與決定流程方向，不重新判讀規格是否�
 將 `AcceptanceResultSchema.Value` 指定給驗收步驟的 `DataSchema`。
 Skill 的驗收結果放在 TaskRunner 外層回覆的 `data`，而不是改變外層回覆格式。
 正常執行驗收後，即使發現不合格，外層 `state` 仍為 `completed`，產品缺陷放在 `data.findings`。
-外層 `issues` 保留給任務本身的未解決問題，不要重複放入產品缺陷。
-若整個驗收無法執行，仍使用 TaskRunner 的 `failed` 或任務 issues。
+外層 `issues` 保留 AI 回報的問題摘要。AppServerAcceptanceStep 預設只依結構化驗收資料決定流程，
+不因 issues 非空而停止；手動使用一般 Step 時則依該步驟的 StopOnIssues 設定處理。
+若整個驗收無法執行，使用 TaskRunner 的 state=failed；無法完成的檢查項目使用 NotEvaluated。
 
 ```csharp
 using System.Text.Json;

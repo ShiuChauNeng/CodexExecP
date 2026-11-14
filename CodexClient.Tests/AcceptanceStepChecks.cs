@@ -119,11 +119,28 @@ internal static class AcceptanceStepChecks
             Assert(!result.Succeeded && result.Error is JsonException && result.Steps.Last().FailureCount == 0);
             Assert(!result.Steps.Last().Completed && client.Prompts.Count == 2);
         });
-        await Check("task issues stop before automatic retry", async () =>
+        await Check("duplicate product issues do not block automatic revision or successful acceptance", async () =>
+        {
+            var client = new Client { TaskIssues = true, Assessment = (_, count) => Result(count == 1 ? FindingSeverity.Error : null) };
+            var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
+            Assert(result.Succeeded && result.Steps.Count == 4 && result.Steps.Last().FailureCount == 1);
+            Assert(result.Steps[1].HasIssues && result.Steps[1].Completed && !result.Steps[1].Accepted);
+            Assert(result.Steps.Last().HasIssues && result.Steps.Last().Accepted && result.Steps.Last().Succeeded);
+            Assert(result.Steps[1].Execution!.Issues[0] == "GOGO.txt 第 1 行算術錯誤，尚未修正。");
+        });
+        await Check("explicit StopOnIssues still adds a stopping condition", async () =>
         {
             var client = new Client { TaskIssues = true, Assessment = (_, _) => Result(FindingSeverity.Error) };
-            var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]") { RetryStep = "Implement", StopOnIssues = true }).RunAsync();
             Assert(!result.Succeeded && result.Steps.Count == 2 && result.Steps.Last().FailureCount == 0);
+        });
+        await Check("failed task state remains an execution failure without retry", async () =>
+        {
+            var client = new Client { FailedTask = true };
+            var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
+            Assert(!result.Succeeded && result.Steps.Count == 2 && result.Error is InvalidOperationException);
+            Assert(!result.Steps.Last().Completed && result.Steps.Last().FailureCount == 0);
         });
         await Check("custom completion validation is preserved and failure does not retry", async () =>
         {
@@ -208,6 +225,7 @@ internal static class AcceptanceStepChecks
         public Func<string, int, AcceptanceResult> Assessment { get; init; } = (_, _) => Result();
         public bool Malformed { get; init; }
         public bool TaskIssues { get; init; }
+        public bool FailedTask { get; init; }
 
         public Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
             => Task.FromResult($"thread-{++_thread}");
@@ -226,10 +244,12 @@ internal static class AcceptanceStepChecks
                 Assert(JsonElement.DeepEquals(outputSchema!.Value.GetProperty("properties").GetProperty("data").GetProperty("anyOf")[0], AcceptanceResultSchema.Value));
                 data = Malformed ? new { invalid = "output" } : Assessment(name, _counts[name]);
             }
+            bool failed = review && FailedTask;
             return Task.FromResult(new TurnResult(threadId, Prompts.Count.ToString(), "completed", JsonSerializer.Serialize(new
             {
-                state = "completed", message = "finished", questions = Array.Empty<string>(),
-                issues = review && TaskIssues ? new[] { "unable to finish task" } : [], data
+                state = failed ? "failed" : "completed", message = failed ? "Unable to perform acceptance." : "finished", questions = Array.Empty<string>(),
+                issues = review && TaskIssues ? new[] { "GOGO.txt 第 1 行算術錯誤，尚未修正。" } : [],
+                data = failed ? null : data
             }, JsonOptions)));
         }
     }

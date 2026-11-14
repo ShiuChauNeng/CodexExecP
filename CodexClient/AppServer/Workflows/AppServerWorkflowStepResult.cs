@@ -18,8 +18,7 @@ public sealed record AppServerWorkflowStepResult(
 
     public bool Completed => Execution is not null && Error is null;
     public bool HasIssues => Execution?.Issues.Count > 0;
-    public bool Succeeded => Completed && !HasIssues &&
-        (AcceptanceDecision is null or CodexClient.Acceptance.AcceptanceDecision.Passed);
+    public bool Succeeded => Completed && (AcceptanceDecision is null ? !HasIssues : Accepted);
 
     public T GetData<T>()
     {

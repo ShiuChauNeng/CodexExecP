@@ -34,12 +34,17 @@ workflow.Add(implementStep).Add(acceptance).Add(styleStep);
 | 有達到失敗等級的問題，或 Check 為 Failed | 累計一次失敗，未達上限時返回 RetryStep |
 | 達到 MaxFailures | 停止 Workflow，保留最後結果與次數 |
 | NotEvaluated、缺少必要項目或空白的 Checks 清單 | 以 Inconclusive 停止，不增加失敗次數 |
-| 格式錯誤、任務 issues 或驗證 callback 失敗 | 依一般執行失敗規則停止，不當成產品缺陷反覆修正 |
+| 任務回報 failed、格式錯誤或驗證 callback 失敗 | 停止，不當成產品缺陷反覆修正 |
 
 Failed 的驗收項目代表必要條件不符合，即使 Findings 沒有 Error，也會判定失敗。
 缺少證據、重複 ID 等無效資料會停止；C# 不會重新判讀規格與程式碼是否一致。
 驗收正常執行完成時，Skill 的外層 state 仍應為 completed，產品缺陷放在 data.findings。
-預設 StopOnIssues=true，外層 task issues 與產品缺陷分開處理。
+驗收 Step 預設 StopOnIssues=false，外層 issues 保留為問題資訊，不再重複決定是否退回或停止。
+任務正常完成且資料有效時，流程方向由 Checks、Findings 與 FailureSeverity 決定；
+即使 AI 將產品缺陷重複列在 issues，也會正常累計驗收失敗並退回修正。
+若需要「issues 非空就停止」的額外條件，可以明確設定 StopOnIssues=true。
+真正無法完成任務應使用 state=failed，無法完成驗收項目則使用 NotEvaluated；
+重要產出（例如報表或測試結果）仍應透過 ValidateCompletionAsync 實際檢查。
 
 返回 RetryStep 時，Workflow 自動將完整驗收資料（包含問題、證據、報表路徑）附加到目標步驟 Prompt。
 報表內容與產出位置仍由 Skill 指令決定；Workflow 不會自動儲存 JSON、檢查報表檔案或重新執行測試。
@@ -86,8 +91,8 @@ Workflow 會逐步傳遞選項；App Server 即使共用 thread，下一步仍�
 ## 接受條件
 
 - `Completed`：取得任務產出，而且選填的 `ValidateCompletionAsync` 已通過。
-- `HasIssues`：AI 回報尚未解決的問題；不是所有工具失敗的集合。
-- Step 的 `Succeeded`：任務完成、沒有 task issues，而且驗收 Step 必須通過驗收。
+- `HasIssues`：AI 回報尚未解決的問題；不是所有工具失敗的集合，也不直接代表驗收是否通過。
+- Step 的 `Succeeded`：一般步驟為 Completed 且沒有 issues；驗收 Step 為 Completed 且 Accepted。
 - `Accepted`：通過這個步驟的流程接受條件；驗收 Step 不通過時為 false。一般步驟 StopOnIssues=false 時允許帶 issues 完成。
 - Workflow 的 `Succeeded`：流程正常走到結尾；歷程可以包含重跑前未通過的驗收結果。
 

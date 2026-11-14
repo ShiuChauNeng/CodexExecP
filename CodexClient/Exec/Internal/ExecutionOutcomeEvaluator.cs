@@ -52,7 +52,6 @@ internal static class ExecutionOutcomeEvaluator
                 continue;
             }
 
-            bool failedStatus = executionEvent.ItemStatus is "failed" or "declined";
             bool validCompletedStatus = executionEvent.ItemStatus == "completed";
             bool failedCommand = executionEvent.ItemType == "command_execution" && executionEvent.ExitCode is int exitCode && exitCode != 0;
             bool hasError = !string.IsNullOrWhiteSpace(executionEvent.ErrorMessage);

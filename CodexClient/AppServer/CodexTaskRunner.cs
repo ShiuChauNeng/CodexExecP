@@ -62,7 +62,7 @@ public sealed class CodexTaskRunner(IAppServerClient client)
         options.Validate();
         JsonElement schema = CreateOutputSchema(dataSchema);
 
-        // 診斷 Log，當出問題時，reportDiagnostics 會被呼叫，並且在 TaskRunResult 中提供完整的診斷資訊。
+        // 每輪取得診斷資料時通知 reportDiagnostics，並在 TaskRunResult 中保留各輪紀錄。
         var diagnostics = new List<AppServerTurnDiagnostics>();
         string input = task;
         while (true)

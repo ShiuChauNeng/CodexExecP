@@ -384,10 +384,6 @@ public sealed class AppServerWorkflow
         {
             message = "驗收尚未完成或無法判斷。";
         }
-        else if (!accepted)
-        {
-            message = $"步驟有未解決問題：{string.Join("；", result.Execution!.Issues)}";
-        }
         else if (result.HasIssues)
         {
             message = $"步驟完成，保留 {result.Execution!.Issues.Count} 個問題。";
