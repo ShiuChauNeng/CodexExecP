@@ -169,9 +169,14 @@ public sealed class CodexExecRunner
         {
             CodexSandboxMode.ReadOnly => "read-only",
             CodexSandboxMode.WorkspaceWrite => "workspace-write",
-            CodexSandboxMode.DangerFullAccess => "danger-full-access",
             _ => throw new ArgumentOutOfRangeException(nameof(options.Sandbox))
         });
+
+        if (options.NetworkAccess is { } networkAccess)
+        {
+            arguments.Add("-c");
+            arguments.Add($"sandbox_workspace_write.network_access={(networkAccess ? "true" : "false")}");
+        }
 
         if (!string.IsNullOrWhiteSpace(options.Model))
         {

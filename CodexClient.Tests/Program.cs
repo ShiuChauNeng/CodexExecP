@@ -3,6 +3,19 @@ using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
 
 // No external test packages or real AI calls are required.
+if (args.FirstOrDefault() == "exec")
+{
+    await Console.In.ReadToEndAsync();
+    Console.WriteLine(JsonSerializer.Serialize(new { type = "thread.started", thread_id = "thread" }));
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        type = "item.completed",
+        item = new { type = "agent_message", text = JsonSerializer.Serialize(args) }
+    }));
+    Console.WriteLine(JsonSerializer.Serialize(new { type = "turn.completed" }));
+    return;
+}
+
 if (args.Contains("app-server"))
 {
     await ServeAsync();
@@ -142,6 +155,7 @@ await CheckAsync("transport cancellation closes the client and preserves partial
     try { await client.StartThreadAsync(workspace); throw new Exception("Expected disposed client."); }
     catch (ObjectDisposedException) { }
 });
+passed += await NetworkAccessChecks.RunAsync(workspace);
 Console.WriteLine($"Passed {passed} checks.");
 
 AppServerWorkflow Workflow(IAppServerClient client,
@@ -200,7 +214,19 @@ static async Task ServeAsync()
                 }
                 Notify("error", new { threadId = "thread", turnId = "1", message = "recovered error", willRetry = true });
                 Notify("item/completed", new { threadId = "thread", turnId = "1", item = new { type = "commandExecution", status = "completed", exitCode = 0 } });
-                Notify("item/completed", new { threadId = "thread", turnId = "1", item = new { type = "agentMessage", text = Reply().Response } });
+                string response = Reply().Response;
+                if (root.GetProperty("params").GetProperty("input")[0].GetProperty("text").GetString()!.Contains("network-check"))
+                {
+                    response = JsonSerializer.Serialize(new
+                    {
+                        state = "completed",
+                        message = root.GetProperty("params").GetRawText(),
+                        questions = Array.Empty<string>(),
+                        issues = Array.Empty<string>(),
+                        data = (object?)null
+                    });
+                }
+                Notify("item/completed", new { threadId = "thread", turnId = "1", item = new { type = "agentMessage", text = response } });
                 Notify("turn/completed", new { threadId = "thread", turn });
                 break;
         }

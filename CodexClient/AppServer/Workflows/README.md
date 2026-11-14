@@ -1,5 +1,23 @@
 # App Server Workflow 執行規則
 
+## 網路權限
+
+每個步驟可透過 `Options.NetworkAccess` 設定工作區沙箱的網路權限：
+
+```csharp
+Options = new AppServerOptions
+{
+    Sandbox = AppServerSandboxMode.WorkspaceWrite,
+    NetworkAccess = true
+}
+```
+
+`true` 允許連網，`false` 禁止連網。App Server 未指定（`null`）時維持禁止連網。
+Exec 的 `ExecutionOptions.NetworkAccess` 使用相同的選項名稱，但未指定時沿用 Codex 設定，維持原有行為。
+兩者只有在 `WorkspaceWrite` 模式下支援明確指定；其他模式指定 `true` 或 `false` 都會拋出 `NotSupportedException`。
+Workflow 會逐步傳遞選項；App Server 即使共用 thread，下一步仍會重新指定自己的權限。
+這個設定控制沙箱中的命令連網，不是 Web 搜尋或所有外部工具的總開關；實際權限仍受執行環境限制。
+
 ## 接受條件
 
 - `Completed`：取得任務產出，而且選填的 `ValidateCompletionAsync` 已通過。

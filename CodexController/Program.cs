@@ -118,7 +118,12 @@ try
 
     var analysisStep = new AppServerWorkflowStep("Analysis", "分析 VerificationTool.cs 的邏輯")
     {
-        Thread = AppServerThread.Create("Analysis")
+        Thread = AppServerThread.Create("Analysis"),
+        Options = new AppServerOptions
+        {
+            Sandbox = AppServerSandboxMode.WorkspaceWrite,
+            WorkspaceRoot = workspaceRoot
+        }
     };
     var TestStep = new AppServerWorkflowStep("Test", "9*9=??");
     var verifyStep = new AppServerWorkflowStep("Verify", "告訴我分析的結果")

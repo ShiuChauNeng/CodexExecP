@@ -10,6 +10,8 @@ public sealed record AppServerOptions
     public string? Model { get; init; }
     public string? ReasoningEffort { get; init; }
     public AppServerSandboxMode Sandbox { get; init; } = AppServerSandboxMode.ReadOnly;
+    /// <summary>WorkspaceWrite 的網路權限；null 維持原有的禁止連網行為。</summary>
+    public bool? NetworkAccess { get; init; }
     /// <summary>寫入範圍；Workflow 會自動帶入自己的工作區。</summary>
     public string? WorkspaceRoot { get; init; }
 
@@ -32,6 +34,11 @@ public sealed record AppServerOptions
             throw new ArgumentOutOfRangeException(nameof(Sandbox));
         }
 
+        if (NetworkAccess is not null && Sandbox != AppServerSandboxMode.WorkspaceWrite)
+        {
+            throw new NotSupportedException("NetworkAccess can only be configured with WorkspaceWrite.");
+        }
+
         if (Sandbox == AppServerSandboxMode.WorkspaceWrite)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(WorkspaceRoot);
@@ -52,7 +59,7 @@ public sealed record AppServerOptions
             ["input"] = new[] { new { type = "text", text = prompt } },
             ["sandboxPolicy"] = Sandbox == AppServerSandboxMode.ReadOnly
                 ? (object)new { type = "readOnly" }
-                : new { type = "workspaceWrite", writableRoots = new[] { Path.GetFullPath(WorkspaceRoot!) }, networkAccess = false }
+                : new { type = "workspaceWrite", writableRoots = new[] { Path.GetFullPath(WorkspaceRoot!) }, networkAccess = NetworkAccess ?? false }
         };
 
         if (outputSchema is not null)

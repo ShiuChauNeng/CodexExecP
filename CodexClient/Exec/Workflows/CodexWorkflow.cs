@@ -187,6 +187,7 @@ public sealed class CodexWorkflow
             Model = source.Model,
             ReasoningEffort = source.ReasoningEffort,
             Sandbox = source.Sandbox,
+            NetworkAccess = source.NetworkAccess,
             OutputSchemaPath = source.OutputSchemaPath,
             SkipGitRepoCheck = source.SkipGitRepoCheck,
             Timeout = source.Timeout

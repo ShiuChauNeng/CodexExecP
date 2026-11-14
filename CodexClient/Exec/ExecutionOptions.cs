@@ -27,6 +27,11 @@ public sealed class ExecutionOptions
     public CodexSandboxMode Sandbox { get; init; } = CodexSandboxMode.ReadOnly;
 
     /// <summary>
+    /// WorkspaceWrite 的網路權限；null 沿用 Codex 設定，true/false 明確允許或禁止。
+    /// </summary>
+    public bool? NetworkAccess { get; init; }
+
+    /// <summary>
     /// 輸出結構描述檔案的路徑。
     /// </summary>
     public string? OutputSchemaPath { get; init; }
@@ -65,6 +70,11 @@ public sealed class ExecutionOptions
         if (!Enum.IsDefined(Sandbox))
         {
             throw new ArgumentOutOfRangeException(nameof(Sandbox));
+        }
+
+        if (NetworkAccess is not null && Sandbox != CodexSandboxMode.WorkspaceWrite)
+        {
+            throw new NotSupportedException("NetworkAccess can only be configured with WorkspaceWrite.");
         }
 
         if (ReasoningEffort is { } effort && !Enum.IsDefined(effort))
@@ -144,9 +154,4 @@ public enum CodexSandboxMode
     /// 允許寫入工作區。
     /// </summary>
     WorkspaceWrite,
-
-    /// <summary>
-    /// 允許完整存取權限。
-    /// </summary>
-    DangerFullAccess
 }
