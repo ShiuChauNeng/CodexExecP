@@ -2,6 +2,8 @@
 using System.Text.Json;
 using System.Text;
 using CodexClient.Internal;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CodexClient.AppServer;
 
@@ -9,6 +11,7 @@ internal sealed class AppServerConnection : IAsyncDisposable
 {
     // Fields
     private readonly Process _process;
+    private readonly ILogger _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly Dictionary<long, TaskCompletionSource<JsonElement>> _pending = [];
     private readonly object _sync = new();
@@ -44,8 +47,9 @@ internal sealed class AppServerConnection : IAsyncDisposable
 
 
     // Constructors
-    public AppServerConnection(string? executablePath = null)
+    public AppServerConnection(string? executablePath = null, ILogger? logger = null)
     {
+        _logger = logger ?? NullLogger.Instance;
         string codexPath = CodexExecutableResolver.Resolve(executablePath);
         var startInfo = CodexProcessStartInfoFactory.Create(codexPath);
         startInfo.ArgumentList.Add("app-server");
@@ -78,6 +82,7 @@ internal sealed class AppServerConnection : IAsyncDisposable
         }
 
         _started = true;
+        _logger.LogInformation("Codex App Server process started. ProcessId: {ProcessId}", _process.Id);
 
         _readTask = ReadLoopAsync();
 
@@ -326,20 +331,32 @@ internal sealed class AppServerConnection : IAsyncDisposable
             return;
         }
 
+        var total = Stopwatch.StartNew();
+        var stage = new Stopwatch();
+        _logger.LogInformation("Codex App Server cleanup started");
+
         try
         {
             if (_started && !_process.HasExited)
             {
+                _logger.LogInformation("Codex App Server process tree stopping");
+                stage.Restart();
                 _process.Kill(entireProcessTree: true);
+                _logger.LogInformation("Codex App Server process tree termination requested. ElapsedMilliseconds: {ElapsedMilliseconds}", stage.ElapsedMilliseconds);
             }
 
             if (_started)
             {
+                _logger.LogInformation("Codex App Server waiting for process exit");
+                stage.Restart();
                 await _process.WaitForExitAsync();
+                _logger.LogInformation("Codex App Server process exited. ExitCode: {ExitCode}, ElapsedMilliseconds: {ElapsedMilliseconds}", _process.ExitCode, stage.ElapsedMilliseconds);
             }
 
             if (_readTask is not null)
             {
+                _logger.LogInformation("Codex App Server waiting for stdout reader");
+                stage.Restart();
                 try
                 {
                     await _readTask;
@@ -348,17 +365,27 @@ internal sealed class AppServerConnection : IAsyncDisposable
                 {
                     // 關閉連線時可能發生預期的 EOF 或 Pipe 結束。
                 }
+                _logger.LogInformation("Codex App Server stdout reader finished. ElapsedMilliseconds: {ElapsedMilliseconds}", stage.ElapsedMilliseconds);
             }
 
             if (_errorTask is not null)
             {
+                _logger.LogInformation("Codex App Server waiting for stderr reader");
+                stage.Restart();
                 await _errorTask;
+                _logger.LogInformation("Codex App Server stderr reader finished. ElapsedMilliseconds: {ElapsedMilliseconds}", stage.ElapsedMilliseconds);
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Codex App Server cleanup failed");
+            throw;
         }
         finally
         {
             _process.Dispose();
             _writeLock.Dispose();
+            _logger.LogInformation("Codex App Server cleanup finished. ElapsedMilliseconds: {ElapsedMilliseconds}", total.ElapsedMilliseconds);
         }
     }
 }

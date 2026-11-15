@@ -1,6 +1,8 @@
 ﻿
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CodexClient.AppServer;
 
@@ -8,6 +10,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 {
     // Fields
     private readonly AppServerConnection _connection;
+    private readonly ILogger _logger;
     private readonly SemaphoreSlim _turnLock = new(1, 1);
     private AppServerTurnDiagnostics? _lastTurnDiagnostics;
 
@@ -26,9 +29,10 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 
 
     // Constructors
-    public CodexAppServerClient(string? executablePath = null)
+    public CodexAppServerClient(string? executablePath = null, ILogger<CodexAppServerClient>? logger = null)
     {
-        _connection = new AppServerConnection(executablePath);
+        _logger = logger ?? NullLogger<CodexAppServerClient>.Instance;
+        _connection = new AppServerConnection(executablePath, _logger);
     }
 
 
@@ -49,7 +53,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 
         try
         {
+            _logger.LogInformation("Codex App Server starting. ApplicationName: {ApplicationName}", applicationName);
             await _connection.StartAsync(cancellationToken);
+            _logger.LogInformation("Codex App Server initializing");
             await _connection.SendRequestAsync("initialize",
                 new
                 {
@@ -64,9 +70,17 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 
             await _connection.SendNotificationAsync("initialized", cancellationToken);
             _initialized = true;
+            _logger.LogInformation("Codex App Server started");
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            _logger.LogWarning("Codex App Server startup cancelled");
+            await DisposeAsync();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Codex App Server startup failed");
             await DisposeAsync();
             throw;
         }
@@ -87,6 +101,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
             throw new DirectoryNotFoundException(workspaceRoot);
         }
 
+        _logger.LogInformation("Codex thread starting. WorkspaceRoot: {WorkspaceRoot}", workspaceRoot);
         JsonElement result = await _connection.SendRequestAsync("thread/start",
             new
             {
@@ -96,7 +111,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
             },
             cancellationToken);
 
-        return result.GetProperty("thread").GetProperty("id").GetString() ?? throw new JsonException("Thread ID is missing.");
+        string threadId = result.GetProperty("thread").GetProperty("id").GetString() ?? throw new JsonException("Thread ID is missing.");
+        _logger.LogInformation("Codex thread started: {SessionId}", threadId);
+        return threadId;
     }
 
     /// <summary>
@@ -122,6 +139,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         Dictionary<string, object?> parameters = options.CreateParameters(threadId, prompt, outputSchema);
 
         await _turnLock.WaitAsync(cancellationToken);
+        using var logScope = _logger.BeginScope("ThreadId: {ThreadId}", threadId);
         var items = new List<JsonElement>();
         var errors = new List<JsonElement>();
         var diagnosticsSync = new object();
@@ -135,6 +153,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         }
         try
         {
+            _logger.LogInformation("Codex turn starting");
             var turnCompletion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
             var response = new StringBuilder();
             string? finalResponse = null;
@@ -156,10 +175,29 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
                 }
                 if (notification.Method == "error")
                 {
+                    _logger.LogWarning("Codex reported an error event. Details: {Details}", parameters);
                     lock (diagnosticsSync)
                     {
                         errors.Add(parameters.Clone());
                         LastTurnDiagnostics = Snapshot();
+                    }
+                }
+
+                if (notification.Method is "item/started" or "item/completed" &&
+                    parameters.TryGetProperty("item", out var commandItem) &&
+                    commandItem.TryGetProperty("type", out var commandType) &&
+                    commandType.GetString() == "commandExecution")
+                {
+                    string? itemId = commandItem.TryGetProperty("id", out var id) ? id.GetString() : null;
+                    if (notification.Method == "item/started")
+                    {
+                        _logger.LogInformation("Command started: {ItemId}, {Command}", itemId,
+                            commandItem.TryGetProperty("command", out var command) ? command.GetString() : null);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Command completed: {ItemId}, ExitCode: {ExitCode}", itemId,
+                            commandItem.TryGetProperty("exitCode", out var exitCode) ? exitCode.ToString() : null);
                     }
                 }
 
@@ -190,6 +228,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
             {
                 JsonElement result = await _connection.SendRequestAsync("turn/start", parameters, cancellationToken);
                 string turnId = result.GetProperty("turn").GetProperty("id").GetString() ?? throw new JsonException("Turn ID is missing.");
+                _logger.LogInformation("Codex turn started. TurnId: {TurnId}", turnId);
 
                 lock (diagnosticsSync)
                 {
@@ -212,6 +251,15 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
                 }
 
                 string status = completed.GetProperty("status").GetString() ?? throw new JsonException("Turn status is missing.");
+                if (status == "failed")
+                {
+                    _logger.LogError("Codex turn failed. TurnId: {TurnId}, Error: {Error}", turnId,
+                        completed.TryGetProperty("error", out var turnError) ? turnError.ToString() : null);
+                }
+                else
+                {
+                    _logger.LogInformation("Codex turn finished. TurnId: {TurnId}, Status: {Status}", turnId, status);
+                }
                 return new TurnResult(
                     threadId,
                     turnId,
@@ -231,9 +279,15 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            _logger.LogWarning("Codex execution interrupted. Reason: {Reason}, TurnId: {TurnId}", "Cancelled", currentTurnId);
             // 第一版不支援中斷後繼續重用相同連線。
             // 直接關閉 Process，避免背景 Turn 繼續執行。
             await DisposeAsync();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Codex execution failed. TurnId: {TurnId}", currentTurnId);
             throw;
         }
         finally

@@ -108,7 +108,7 @@ try
     //}
 
     string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
-    await using var client = new CodexAppServerClient();
+    await using var client = new CodexAppServerClient(logger: loggerFactory.CreateLogger<CodexAppServerClient>());
     await client.StartAsync(workspaceRoot);
 
     //var handler = new ConsoleWorkflowInputHandler();
