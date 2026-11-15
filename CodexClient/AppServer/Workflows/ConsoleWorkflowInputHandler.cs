@@ -1,8 +1,13 @@
 namespace CodexClient.AppServer.Workflows;
 
-/// <summary>共用的 Console 問答處理，可將 AnswerAsync 傳給多個 Workflow。</summary>
 public sealed class ConsoleWorkflowInputHandler
 {
+    /// <summary>
+    /// 在主控台逐題取得 Workflow 所需的使用者回答。
+    /// </summary>
+    /// <param name="request">使用者輸入要求。</param>
+    /// <param name="cancellationToken">用於取消等待輸入的權杖。</param>
+    /// <returns>非同步回傳使用者回答集合。</returns>
     public async Task<IReadOnlyList<string>> AnswerAsync(AppServerWorkflowInputRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

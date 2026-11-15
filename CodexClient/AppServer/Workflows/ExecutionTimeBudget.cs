@@ -2,14 +2,16 @@ using System.Diagnostics;
 
 namespace CodexClient.AppServer.Workflows;
 
-/// <summary>累計執行額度；暫停期間仍遵守外部取消與整體逾時。</summary>
 internal sealed class ExecutionTimeBudget : IDisposable
 {
+    // Fields
     private readonly CancellationTokenSource _cancellation;
     private readonly TimeSpan? _limit;
     private readonly Stopwatch _elapsed = new();
     internal CancellationToken Token => _cancellation.Token;
 
+
+    // Constructors
     internal ExecutionTimeBudget(TimeSpan? limit, CancellationToken cancellationToken)
     {
         _limit = limit;
@@ -21,6 +23,11 @@ internal sealed class ExecutionTimeBudget : IDisposable
         }
     }
 
+
+    // Methods
+    /// <summary>
+    /// 暫停累計執行時間計算。
+    /// </summary>
     internal void Pause()
     {
         _cancellation.CancelAfter(Timeout.InfiniteTimeSpan);
@@ -33,6 +40,9 @@ internal sealed class ExecutionTimeBudget : IDisposable
         Token.ThrowIfCancellationRequested();
     }
 
+    /// <summary>
+    /// 恢復累計執行時間計算。
+    /// </summary>
     internal void Resume()
     {
         Token.ThrowIfCancellationRequested();
@@ -49,5 +59,8 @@ internal sealed class ExecutionTimeBudget : IDisposable
         _elapsed.Start();
     }
 
+    /// <summary>
+    /// 釋放執行額度使用的取消資源。
+    /// </summary>
     public void Dispose() => _cancellation.Dispose();
 }

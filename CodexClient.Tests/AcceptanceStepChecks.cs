@@ -2,6 +2,7 @@ using System.Text.Json;
 using CodexClient.Acceptance;
 using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
+using CodexClient.Models;
 
 internal static class AcceptanceStepChecks
 {
@@ -160,9 +161,20 @@ internal static class AcceptanceStepChecks
                 .Add(new AppServerAcceptanceStep("Review", context => "[review:A] " + context.GetStep("Implement").Execution!.Message)
                 {
                     RetryStep = "Implement",
-                    Options = new() { Sandbox = AppServerSandboxMode.WorkspaceWrite, NetworkAccess = true }
+                    Options = new() { Sandbox = CodexSandboxMode.WorkspaceWrite, NetworkAccess = true }
                 }).RunAsync();
             Assert(result.Succeeded && client.Options.Last().NetworkAccess == true && client.Prompts.Last().Contains("finished"));
+        });
+        await Check("acceptance instructions cannot hide an empty dynamic prompt", async () =>
+        {
+            foreach (string? prompt in new string?[] { null, " " })
+            {
+                var client = new Client();
+                var result = await Workflow(client).Add(new("Implement", "implement"))
+                    .Add(new AppServerAcceptanceStep("Review", _ => prompt!) { RetryStep = "Implement" }).RunAsync();
+                Assert(!result.Succeeded && result.FailedStep == "Review" && result.Error is ArgumentException);
+                Assert(client.Prompts.Count == 1);
+            }
         });
         await Check("invalid acceptance configuration fails before any model calls", async () =>
         {

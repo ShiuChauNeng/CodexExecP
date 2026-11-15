@@ -15,7 +15,9 @@ public enum AppServerWorkflowStatus
     Faulted
 }
 
-/// <summary>本機流程的狀態；定期通知表示仍在等待，不代表遠端 AI 一定有進展。</summary>
+/// <summary>
+/// 本機流程的狀態；定期通知表示仍在等待，不代表遠端 AI 一定有進展。
+/// </summary>
 public sealed record AppServerWorkflowProgress(
     DateTimeOffset Timestamp,
     AppServerWorkflowStatus Status,

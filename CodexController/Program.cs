@@ -2,11 +2,9 @@
 using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
 using CodexClient.Exec;
-using CodexClient.Sessions;
-using CodexClient.Workflows;
+using CodexClient.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using System.Text.Json;
 
 
 Stopwatch stopwatch = new Stopwatch();
@@ -122,7 +120,7 @@ try
     //    Thread = AppServerThread.Create("Analysis"),
     //    Options = new AppServerOptions
     //    {
-    //        Sandbox = AppServerSandboxMode.WorkspaceWrite,
+    //        Sandbox = CodexSandboxMode.WorkspaceWrite,
     //        WorkspaceRoot = workspaceRoot
     //    }
     //};
@@ -152,17 +150,11 @@ try
     // Test
     var handler = new ConsoleWorkflowInputHandler();
     var reporter = new ConsoleWorkflowProgressReporter();
-
     var writeOptions = new AppServerOptions
     {
-        Sandbox = AppServerSandboxMode.WorkspaceWrite
+        Sandbox = CodexSandboxMode.WorkspaceWrite,
     };
-
-    var workflow = new AppServerWorkflow(
-        client,
-        workspaceRoot,
-        handler.AnswerAsync,
-        reporter);
+    var workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
 
     workflow
         .Add(new AppServerWorkflowStep(

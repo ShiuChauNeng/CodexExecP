@@ -32,7 +32,14 @@ internal sealed class AppServerConnection : IAsyncDisposable
     private int _disposed;
     private Exception? _failure;
 
+    /// <summary>
+    /// 收到 App Server notification 時觸發的事件。
+    /// </summary>
     public event Action<AppServerEvent>? NotificationReceived;
+
+    /// <summary>
+    /// 取得讀取迴圈的完成工作；連線尚未啟動時會擲出例外。
+    /// </summary>
     public Task Completion => _readTask ?? throw new InvalidOperationException("Connection has not started.");
 
 
@@ -50,6 +57,11 @@ internal sealed class AppServerConnection : IAsyncDisposable
 
 
     // Methods
+    /// <summary>
+    /// 啟動 App Server 程序與讀取迴圈。
+    /// </summary>
+    /// <param name="cancellationToken">用於取消啟動作業的權杖。</param>
+    /// <returns>表示啟動作業的非同步工作。</returns>
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -76,6 +88,10 @@ internal sealed class AppServerConnection : IAsyncDisposable
     }
 
 
+    /// <summary>
+    /// 持續讀取並保留 App Server 標準錯誤輸出的尾端內容。
+    /// </summary>
+    /// <returns>表示讀取作業的非同步工作。</returns>
     private async Task ReadStandardErrorAsync()
     {
         var buffer = new char[2048];
@@ -94,7 +110,13 @@ internal sealed class AppServerConnection : IAsyncDisposable
         }
     }
 
-    // 主要
+    /// <summary>
+    /// 傳送 JSON-RPC request 並等待對應的回應。
+    /// </summary>
+    /// <param name="method">JSON-RPC 方法名稱。</param>
+    /// <param name="parameters">要傳送的方法參數。</param>
+    /// <param name="cancellationToken">用於取消要求的權杖。</param>
+    /// <returns>非同步回傳 App Server 的 JSON 回應。</returns>
     public async Task<JsonElement> SendRequestAsync(string method, object parameters, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
@@ -127,6 +149,12 @@ internal sealed class AppServerConnection : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 傳送不需要回應的 JSON-RPC notification。
+    /// </summary>
+    /// <param name="method">JSON-RPC 方法名稱。</param>
+    /// <param name="cancellationToken">用於取消傳送作業的權杖。</param>
+    /// <returns>表示傳送作業的非同步工作。</returns>
     public Task SendNotificationAsync(string method, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
@@ -139,6 +167,12 @@ internal sealed class AppServerConnection : IAsyncDisposable
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// 將 JSON-RPC 訊息寫入 App Server 標準輸入。
+    /// </summary>
+    /// <param name="message">要序列化並傳送的訊息。</param>
+    /// <param name="cancellationToken">用於取消傳送作業的權杖。</param>
+    /// <returns>表示傳送作業的非同步工作。</returns>
     private async Task SendAsync(object message, CancellationToken cancellationToken)
     {
         string json = JsonSerializer.Serialize(message);
@@ -155,6 +189,10 @@ internal sealed class AppServerConnection : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 持續讀取 App Server 回應並分派通知或完成中的要求。
+    /// </summary>
+    /// <returns>表示讀取迴圈的非同步工作。</returns>
     private async Task ReadLoopAsync()
     {
         Exception? failure = null;
@@ -256,6 +294,9 @@ internal sealed class AppServerConnection : IAsyncDisposable
         throw failure;
     }
 
+    /// <summary>
+    /// 確認連線已啟動且尚未失敗或釋放。
+    /// </summary>
     private void EnsureRunning()
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
@@ -274,6 +315,10 @@ internal sealed class AppServerConnection : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 非同步停止 App Server 程序並釋放連線資源。
+    /// </summary>
+    /// <returns>表示釋放作業的非同步值工作。</returns>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)

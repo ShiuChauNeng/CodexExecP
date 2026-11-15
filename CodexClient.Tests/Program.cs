@@ -172,6 +172,7 @@ await CheckAsync("transport cancellation closes the client and preserves partial
     catch (ObjectDisposedException) { }
 });
 passed += await NetworkAccessChecks.RunAsync(workspace);
+passed += await ReasoningEffortChecks.RunAsync(workspace);
 passed += await AcceptanceChecks.RunAsync(workspace);
 passed += await WorkflowRoutingChecks.RunAsync(workspace);
 passed += await AcceptanceStepChecks.RunAsync(workspace);
@@ -234,7 +235,8 @@ static async Task ServeAsync()
                 Notify("error", new { threadId = "thread", turnId = "1", message = "recovered error", willRetry = true });
                 Notify("item/completed", new { threadId = "thread", turnId = "1", item = new { type = "commandExecution", status = "completed", exitCode = 0 } });
                 string response = Reply().Response;
-                if (root.GetProperty("params").GetProperty("input")[0].GetProperty("text").GetString()!.Contains("network-check"))
+                string input = root.GetProperty("params").GetProperty("input")[0].GetProperty("text").GetString()!;
+                if (input.Contains("network-check") || input.Contains("reasoning-check"))
                 {
                     response = JsonSerializer.Serialize(new
                     {

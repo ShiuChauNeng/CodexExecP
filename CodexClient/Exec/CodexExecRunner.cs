@@ -1,5 +1,6 @@
 ﻿using CodexClient.Exec.Internal;
 using CodexClient.Internal;
+using CodexClient.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text;

@@ -9,6 +9,7 @@ namespace CodexClient.AppServer;
 /// </summary>
 public sealed class CodexTaskRunner(IAppServerClient client)
 {
+    // Fields
     private readonly IAppServerClient _client = client ?? throw new ArgumentNullException(nameof(client));
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly JsonElement OutputSchema = JsonSerializer.Deserialize<JsonElement>(
@@ -40,6 +41,18 @@ public sealed class CodexTaskRunner(IAppServerClient client)
         data 在 completed 時依 Schema 提供產出；其他狀態為 null。未定義資料結構時 data 為 null。
         """;
 
+
+    // Methods
+    /// <summary>
+    /// 執行任務，並在模型需要資訊時透過委派取得使用者回答。
+    /// </summary>
+    /// <param name="threadId">要使用的 thread 識別碼。</param>
+    /// <param name="task">要執行的任務描述。</param>
+    /// <param name="answerQuestionsAsync">回答模型問題的非同步委派。</param>
+    /// <param name="options">App Server 執行選項。</param>
+    /// <param name="dataSchema">完成任務時預期的資料結構描述。</param>
+    /// <param name="cancellationToken">用於取消任務的權杖。</param>
+    /// <returns>非同步回傳任務執行結果。</returns>
     public async Task<TaskRunResult> RunAsync(
         string threadId,
         string task,
@@ -49,6 +62,17 @@ public sealed class CodexTaskRunner(IAppServerClient client)
         CancellationToken cancellationToken = default)
         => await RunCoreAsync(threadId, task, answerQuestionsAsync, options, dataSchema, cancellationToken, null);
 
+    /// <summary>
+    /// 執行任務核心流程，並可回報每一輪 turn 的診斷資訊。
+    /// </summary>
+    /// <param name="threadId">要使用的 thread 識別碼。</param>
+    /// <param name="task">要執行的任務描述。</param>
+    /// <param name="answerQuestionsAsync">回答模型問題的非同步委派。</param>
+    /// <param name="options">App Server 執行選項。</param>
+    /// <param name="dataSchema">完成任務時預期的資料結構描述。</param>
+    /// <param name="cancellationToken">用於取消任務的權杖。</param>
+    /// <param name="reportDiagnostics">回報 turn 診斷資訊的委派。</param>
+    /// <returns>非同步回傳任務執行結果。</returns>
     internal async Task<TaskRunResult> RunCoreAsync(
         string threadId, string task,
         Func<TaskInputRequest, CancellationToken, Task<IReadOnlyList<string>>> answerQuestionsAsync,
@@ -58,6 +82,7 @@ public sealed class CodexTaskRunner(IAppServerClient client)
         ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
         ArgumentException.ThrowIfNullOrWhiteSpace(task);
         ArgumentNullException.ThrowIfNull(answerQuestionsAsync);
+
         options ??= new();
         options.Validate();
         JsonElement schema = CreateOutputSchema(dataSchema);
@@ -68,8 +93,7 @@ public sealed class CodexTaskRunner(IAppServerClient client)
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            TurnResult turn = await _client.RunTurnAsync(
-                threadId, Instructions + "\n\n" + input, schema, options, cancellationToken).WaitAsync(cancellationToken);
+            TurnResult turn = await _client.RunTurnAsync(threadId, Instructions + "\n\n" + input, schema, options, cancellationToken).WaitAsync(cancellationToken);
             if (turn.Diagnostics is { } diagnostic)
             {
                 diagnostics.Add(diagnostic);
@@ -83,7 +107,6 @@ public sealed class CodexTaskRunner(IAppServerClient client)
             }
 
             Reply reply = JsonSerializer.Deserialize<Reply>(turn.Response, JsonOptions) ?? throw new JsonException("Task response is missing.");
-
             if (string.IsNullOrWhiteSpace(reply.Message) || reply.Questions is null || reply.Issues is null ||
                 reply.Questions.Any(string.IsNullOrWhiteSpace) || reply.Issues.Any(string.IsNullOrWhiteSpace) ||
                 reply.Data.ValueKind == JsonValueKind.Undefined)
@@ -102,6 +125,7 @@ public sealed class CodexTaskRunner(IAppServerClient client)
                     {
                         throw new JsonException("needs_input requires at least one question.");
                     }
+
                     var request = new TaskInputRequest(threadId, turn.TurnId, reply.Message, Array.AsReadOnly(reply.Questions));
                     IReadOnlyList<string> answers = await answerQuestionsAsync(request, cancellationToken).WaitAsync(cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
@@ -144,6 +168,10 @@ public sealed class CodexTaskRunner(IAppServerClient client)
         }
     }
 
+    /// <summary>
+    /// 驗證任務資料結構描述的格式。
+    /// </summary>
+    /// <param name="dataSchema">要驗證的資料結構描述。</param>
     internal static void ValidateDataSchema(JsonElement? dataSchema)
     {
         if (dataSchema is { } schema && (schema.ValueKind != JsonValueKind.Object ||
@@ -153,6 +181,11 @@ public sealed class CodexTaskRunner(IAppServerClient client)
         }
     }
 
+    /// <summary>
+    /// 建立任務回覆使用的輸出結構描述。
+    /// </summary>
+    /// <param name="dataSchema">選用的任務資料結構描述。</param>
+    /// <returns>完整的任務輸出結構描述。</returns>
     private static JsonElement CreateOutputSchema(JsonElement? dataSchema)
     {
         ValidateDataSchema(dataSchema);

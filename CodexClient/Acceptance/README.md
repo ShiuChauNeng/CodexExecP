@@ -56,7 +56,7 @@ var acceptanceStep = new AppServerWorkflowStep(
     DataSchema = AcceptanceResultSchema.Value,
     Options = new AppServerOptions
     {
-        Sandbox = AppServerSandboxMode.WorkspaceWrite
+        Sandbox = CodexSandboxMode.WorkspaceWrite
     },
     StopOnIssues = true,
     ValidateCompletionAsync = (execution, token) =>

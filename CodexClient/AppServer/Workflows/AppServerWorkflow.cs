@@ -14,15 +14,24 @@ public sealed class AppServerWorkflow
     private readonly IAppServerClient _client;
     private readonly CodexTaskRunner _runner;
     private readonly string _workspaceRoot;
-    private readonly Func<AppServerWorkflowInputRequest, CancellationToken, Task<IReadOnlyList<string>>> _answerQuestionsAsync;
     private readonly IProgress<AppServerWorkflowProgress>? _progress;
     private readonly List<AppServerWorkflowStep> _steps = [];
     private readonly object _sync = new();
     private int _running;
 
-    /// <summary>等待 AI 或其他執行階段時的狀態提醒間隔；等待使用者輸入期間不輸出定期提醒。</summary>
+    /// <summary>
+    /// 使用者回應設定
+    /// </summary>
+    private readonly Func<AppServerWorkflowInputRequest, CancellationToken, Task<IReadOnlyList<string>>> _answerQuestionsAsync;
+
+    /// <summary>
+    /// 等待 AI 或其他執行階段時的狀態提醒間隔；等待使用者輸入期間不輸出定期提醒。
+    /// </summary>
     public TimeSpan ProgressInterval { get; init; } = TimeSpan.FromSeconds(15);
-    /// <summary>最近一次執行時同步 Report 的錯誤；不影響步驟的執行結果。</summary>
+
+    /// <summary>
+    /// 最近一次執行時同步 Report 的錯誤；不影響步驟的執行結果。
+    /// </summary>
     public Exception? ProgressError { get; private set; }
 
 
@@ -46,6 +55,11 @@ public sealed class AppServerWorkflow
 
 
     // Methods
+    /// <summary>
+    /// 將步驟加入 Workflow。
+    /// </summary>
+    /// <param name="step">要加入的 Workflow 步驟。</param>
+    /// <returns>目前的 Workflow 實例，方便串接呼叫。</returns>
     public AppServerWorkflow Add(AppServerWorkflowStep step)
     {
         ArgumentNullException.ThrowIfNull(step);
@@ -56,6 +70,11 @@ public sealed class AppServerWorkflow
         return this;
     }
 
+    /// <summary>
+    /// 將多個步驟依序加入 Workflow。
+    /// </summary>
+    /// <param name="steps">要加入的 Workflow 步驟集合。</param>
+    /// <returns>目前的 Workflow 實例，方便串接呼叫。</returns>
     public AppServerWorkflow AddRange(IEnumerable<AppServerWorkflowStep> steps)
     {
         ArgumentNullException.ThrowIfNull(steps);
@@ -68,6 +87,11 @@ public sealed class AppServerWorkflow
         return this;
     }
 
+    /// <summary>
+    /// 執行目前設定的 Workflow。
+    /// </summary>
+    /// <param name="cancellationToken">用於取消 Workflow 的權杖。</param>
+    /// <returns>非同步回傳 Workflow 執行結果。</returns>
     public async Task<AppServerWorkflowResult> RunAsync(CancellationToken cancellationToken = default)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
@@ -75,6 +99,7 @@ public sealed class AppServerWorkflow
             throw new InvalidOperationException("This workflow is already running.");
         }
 
+        // 進度通知工具
         ProgressError = null;
         WorkflowProgressScope? progress = null;
         try
@@ -86,6 +111,7 @@ public sealed class AppServerWorkflow
             AppServerWorkflowStep[] steps;
             lock (_sync) steps = _steps.ToArray();
             ValidatePlan(steps);
+
             var results = new List<AppServerWorkflowStepResult>();
             var threads = new Dictionary<string, string>(StringComparer.Ordinal);
             var failures = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -96,20 +122,25 @@ public sealed class AppServerWorkflow
             while (nextIndex < steps.Length)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
                 var step = steps[nextIndex];
                 AppServerWorkflowStepResult result = await ExecuteStepAsync(step, results, threads, progress, cancellationToken, retryFeedback);
                 retryFeedback = null;
                 bool taskAccepted = result.Completed && (!step.StopOnIssues || !result.HasIssues);
                 int failureCount = failures.GetValueOrDefault(step.Name);
+                // 如果步驟被接受但驗收不通過，則增加失敗計數。
                 if (taskAccepted && result.AcceptanceDecision == AcceptanceDecision.NeedsRevision)
                 {
                     failures[step.Name] = ++failureCount;
                 }
+
+                // 步驟被接受且驗收通過，才算是最終接受。
                 bool accepted = taskAccepted && (result.AcceptanceDecision is null or AcceptanceDecision.Passed);
                 result = result with { Accepted = accepted, FailureCount = failureCount };
                 results.Add(result);
-
                 ReportStepResult(result, accepted, progress);
+
+                // 如果步驟未被接受，則停止 Workflow 並回傳結果。
                 if (!taskAccepted)
                 {
                     progress.Update(AppServerWorkflowStatus.Stopped, $"Workflow 停止於 {step.Name}。", step.Name, result.ThreadId);
@@ -122,6 +153,7 @@ public sealed class AppServerWorkflow
                     threads[step.Thread.Key!] = result.ThreadId!;
                 }
 
+                // 驗收流程：如果步驟是驗收步驟，且驗收結果為 NeedsRevision，則檢查是否超過最大失敗次數，若未超過則返回 RetryStep。
                 if (step is AppServerAcceptanceStep acceptance)
                 {
                     if (result.AcceptanceDecision == AcceptanceDecision.Inconclusive)
@@ -161,9 +193,9 @@ public sealed class AppServerWorkflow
                         {
                             throw new InvalidOperationException($"Step '{step.Name}' selected an unknown next step: '{target}'.");
                         }
+
                         nextIndex = targetIndex;
-                        progress.Update(AppServerWorkflowStatus.Running,
-                            $"由 {step.Name} 前往 {target}。", step.Name, result.ThreadId);
+                        progress.Update(AppServerWorkflowStatus.Running, $"由 {step.Name} 前往 {target}。", step.Name, result.ThreadId);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -204,6 +236,16 @@ public sealed class AppServerWorkflow
         }
     }
 
+    /// <summary>
+    /// 執行單一 Workflow 步驟並處理其 thread 與輸入要求。
+    /// </summary>
+    /// <param name="step">要執行的步驟。</param>
+    /// <param name="results">目前已完成的步驟結果。</param>
+    /// <param name="threads">目前已建立的 thread 對應表。</param>
+    /// <param name="progress">Workflow 進度範圍。</param>
+    /// <param name="cancellationToken">用於取消步驟的權杖。</param>
+    /// <param name="retryFeedback">前次驗收失敗提供給重試步驟的回饋。</param>
+    /// <returns>非同步回傳步驟執行結果。</returns>
     private async Task<AppServerWorkflowStepResult> ExecuteStepAsync(
         AppServerWorkflowStep step,
         List<AppServerWorkflowStepResult> results,
@@ -228,10 +270,9 @@ public sealed class AppServerWorkflow
         int inputRounds = 0;
         var diagnostics = new List<AppServerTurnDiagnostics>();
         AppServerTurnDiagnostics? previousDiagnostics = _client.LastTurnDiagnostics;
-
         try
         {
-            string prompt = CreatePrompt(step, results, threads);
+            string prompt = step.CreatePrompt(CreateContext(results, threads));
             ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
             if (acceptanceFeedback is not null)
             {
@@ -243,15 +284,7 @@ public sealed class AppServerWorkflow
                         acceptance = acceptanceFeedback.Execution!.Data
                     });
             }
-            if (step is AppServerAcceptanceStep acceptanceStep)
-            {
-                prompt += "\n\n驗收正常執行完成時 state=completed；產品缺陷放在 data.findings。" +
-                    "所有驗收項目均須回報狀態及證據，無法判斷時使用 NotEvaluated，不可自行當成通過。";
-                if (acceptanceStep.RequiredCriterionIds.Count > 0)
-                {
-                    prompt += "\n必要驗收項目 ID：" + JsonSerializer.Serialize(acceptanceStep.RequiredCriterionIds);
-                }
-            }
+
             progress.Update(AppServerWorkflowStatus.CreatingThread, step.Thread.Mode == AppServerThreadMode.Use ? "準備使用既有 thread。" : "正在建立 thread。", step.Name);
             threadId = step.Thread.Mode == AppServerThreadMode.Use ? threads[step.Thread.Key!] : await _client.StartThreadAsync(_workspaceRoot, token).WaitAsync(token);
             ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
@@ -264,6 +297,7 @@ public sealed class AppServerWorkflow
                     {
                         throw new InvalidOperationException($"Step '{step.Name}' exceeded its input round limit ({max}).");
                     }
+
                     inputRounds++;
                     budget.Pause();
                     using var inputCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -273,8 +307,7 @@ public sealed class AppServerWorkflow
                     }
                     try
                     {
-                        var answers = await AnswerQuestionsAsync(step.Name, request, progress, inputCancellation.Token)
-                            .WaitAsync(inputCancellation.Token);
+                        var answers = await AnswerQuestionsAsync(step.Name, request, progress, inputCancellation.Token).WaitAsync(inputCancellation.Token);
                         inputCancellation.Token.ThrowIfCancellationRequested();
                         budget.Resume();
                         return answers;
@@ -283,21 +316,24 @@ public sealed class AppServerWorkflow
                     {
                         throw new TimeoutException($"Step '{step.Name}' exceeded its input time limit.", ex);
                     }
-                },
-                step.Options with { WorkspaceRoot = _workspaceRoot }, step.DataSchema, token, diagnostics.Add);
+                }, step.Options with { WorkspaceRoot = _workspaceRoot }, step.DataSchema, token, diagnostics.Add);
+
             if (step is AppServerAcceptanceStep acceptance)
             {
                 acceptanceDecision = acceptance.Evaluate(execution);
             }
+
             if (step.ValidateCompletionAsync is not null)
             {
                 progress.Update(AppServerWorkflowStatus.Validating, "AI 已回覆，正在驗證產出。", step.Name, threadId);
                 await step.ValidateCompletionAsync(execution, token).WaitAsync(token);
             }
+
             token.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Workflow RunAsync 會捕捉此例外並回報 WorkflowStatus.Cancelled。
             throw;
         }
         catch (OperationCanceledException ex) when (token.IsCancellationRequested)
@@ -323,6 +359,7 @@ public sealed class AppServerWorkflow
                 diagnostics.Add(last);
             }
         }
+
         return new(step.Name, threadId, execution, error)
         {
             Diagnostics = Array.AsReadOnly(diagnostics.ToArray()),
@@ -330,41 +367,43 @@ public sealed class AppServerWorkflow
         };
     }
 
-    private static string CreatePrompt(AppServerWorkflowStep step,
-        List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads)
-    {
-        if (step.PromptFactory is null)
-        {
-            return step.Prompt!;
-        }
-
-        return step.PromptFactory(CreateContext(results, threads));
-    }
-
     // Prompt 與分流 callback 取得固定快照，後續執行不會改變已保留的 Context。
-    private static AppServerWorkflowContext CreateContext(
-        List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads)
+    /// <summary>
+    /// 建立供步驟提示使用的工作流程內容。
+    /// </summary>
+    /// <param name="results">目前已完成的步驟結果。</param>
+    /// <param name="threads">目前已建立的 thread 對應表。</param>
+    /// <returns>工作流程內容。</returns>
+    private static AppServerWorkflowContext CreateContext(List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads)
         => new(Array.AsReadOnly(results.ToArray()),
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(threads, StringComparer.Ordinal)));
 
-    private async Task<IReadOnlyList<string>> AnswerQuestionsAsync(string stepName,
-        TaskInputRequest request, WorkflowProgressScope progress, CancellationToken cancellationToken)
+    /// <summary>
+    /// 暫停執行並取得使用者對模型問題的回答。
+    /// </summary>
+    /// <param name="request">使用者輸入要求。</param>
+    /// <param name="cancellationToken">用於取消等待輸入的權杖。</param>
+    /// <returns>非同步回傳使用者回答。</returns>
+    private async Task<IReadOnlyList<string>> AnswerQuestionsAsync(string stepName, TaskInputRequest request, WorkflowProgressScope progress, CancellationToken cancellationToken)
     {
-        progress.Update(AppServerWorkflowStatus.WaitingForInput,
-            $"等待使用者回答，共 {request.Questions.Count} 個問題。", stepName, request.ThreadId);
+        progress.Update(AppServerWorkflowStatus.WaitingForInput, $"等待使用者回答，共 {request.Questions.Count} 個問題。", stepName, request.ThreadId);
 
         // TaskRunner 已負責取消這次等待，這裡只轉接輸入介面與狀態提示。
-        var answers = await _answerQuestionsAsync(new(stepName, request.ThreadId,
-            request.TurnId, request.Message, request.Questions), cancellationToken);
+        var answers = await _answerQuestionsAsync(new(stepName, request.ThreadId, request.TurnId, request.Message, request.Questions), cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        progress.Update(AppServerWorkflowStatus.Running,
-            "已收到回答，繼續等待 AI 執行結果。", stepName, request.ThreadId);
+        progress.Update(AppServerWorkflowStatus.Running, "已收到回答，繼續等待 AI 執行結果。", stepName, request.ThreadId);
 
         return answers;
     }
 
+    /// <summary>
+    /// 將步驟結果轉換為 Workflow 進度通知。
+    /// </summary>
+    /// <param name="result">步驟執行結果。</param>
+    /// <param name="accepted">步驟是否被接受。</param>
+    /// <param name="progress">Workflow 進度範圍。</param>
     private static void ReportStepResult(AppServerWorkflowStepResult result, bool accepted, WorkflowProgressScope progress)
     {
         string message;
@@ -432,6 +471,15 @@ public sealed class AppServerWorkflow
         }
     }
 
+    /// <summary>
+    /// 建立 Workflow 結束結果。
+    /// </summary>
+    /// <param name="succeeded">Workflow 是否成功完成。</param>
+    /// <param name="failedStep">失敗或停止的步驟名稱。</param>
+    /// <param name="results">已執行的步驟結果。</param>
+    /// <param name="threads">已建立的 thread 對應表。</param>
+    /// <param name="error">導致 Workflow 結束的錯誤。</param>
+    /// <returns>Workflow 結果。</returns>
     private static AppServerWorkflowResult Finish(bool succeeded, string? failedStep, List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads, Exception? error = null)
         // 回傳後這次執行不再變更 threads，唯讀包裝即可，不需再複製。
         => new(succeeded, failedStep, Array.AsReadOnly(results.ToArray()), new ReadOnlyDictionary<string, string>(threads))

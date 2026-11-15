@@ -37,6 +37,9 @@ dotnet run --project CodexClient.Tests/CodexClient.Tests.csproj -- --acceptance-
 網路權限檢查使用模擬程序驗證 Exec 的參數、Session Resume 的選項傳遞、
 App Server 共用 thread 的逐步權限，以及不支援模式的驗證；不會實際連網。
 
+推理強度檢查透過模擬 App Server 驗證各 enum 的字串傳輸、未指定時省略 effort，
+以及無效 enum 值會在送出前被拒絕。
+
 驗收契約檢查包含 Error/Warning/Info、缺少必要項目、未完成驗收、資料格式驗證，
 以及「驗收步驟正常完成，但產品需要修正」的 Workflow 模擬整合。
 

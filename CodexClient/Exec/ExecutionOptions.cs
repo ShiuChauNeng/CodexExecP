@@ -1,4 +1,6 @@
-﻿namespace CodexClient.Exec;
+﻿using CodexClient.Models;
+
+namespace CodexClient.Exec;
 
 /// <summary>
 /// 定義 Codex 執行時使用的選項。
@@ -107,51 +109,4 @@ public sealed class ExecutionOptions
             throw new ArgumentOutOfRangeException(nameof(Timeout), "Timeout must be positive and supported by CancellationTokenSource.");
         }
     }
-}
-
-/// <summary>
-/// Codex 模型可使用的推理強度。
-/// </summary>
-public enum CodexReasoningEffort
-{
-    /// <summary>
-    /// 最小推理強度。
-    /// </summary>
-    Minimal,
-
-    /// <summary>
-    /// 低推理強度。
-    /// </summary>
-    Low,
-
-    /// <summary>
-    /// 中等推理強度。
-    /// </summary>
-    Medium,
-
-    /// <summary>
-    /// 高推理強度。
-    /// </summary>
-    High,
-
-    /// <summary>
-    /// 最高推理強度。
-    /// </summary>
-    XHigh
-}
-
-/// <summary>
-/// Codex 可使用的沙箱權限模式。
-/// </summary>
-public enum CodexSandboxMode
-{
-    /// <summary>
-    /// 僅允許讀取工作區。
-    /// </summary>
-    ReadOnly,
-
-    /// <summary>
-    /// 允許寫入工作區。
-    /// </summary>
-    WorkspaceWrite,
 }

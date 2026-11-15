@@ -119,6 +119,8 @@ public sealed record AcceptanceResult(
         {
             return AcceptanceDecision.Inconclusive;
         }
+
+        // 若有必要項目不符合規格，或有符合 failureSeverity 的 Findings，回傳 NeedsRevision。
         if (Checks.Any(check => check.Status == AcceptanceCheckStatus.Failed) ||
             Findings.Any(finding => failureSeverity switch
             {

@@ -4,6 +4,7 @@ using CodexClient.AppServer.Workflows;
 using CodexClient.Exec;
 using CodexClient.Workflows;
 using Microsoft.Extensions.Logging.Abstractions;
+using CodexClient.Models;
 
 internal static class NetworkAccessChecks
 {
@@ -55,7 +56,7 @@ internal static class NetworkAccessChecks
             appWorkflow.Add(new AppServerWorkflowStep($"network-{index}", "network-check")
             {
                 Thread = index == 0 ? AppServerThread.Create("shared") : AppServerThread.Use("shared"),
-                Options = new AppServerOptions { Sandbox = AppServerSandboxMode.WorkspaceWrite, NetworkAccess = access },
+                Options = new AppServerOptions { Sandbox = CodexSandboxMode.WorkspaceWrite, NetworkAccess = access },
                 ExecutionTimeout = TimeSpan.FromSeconds(5)
             });
             index++;

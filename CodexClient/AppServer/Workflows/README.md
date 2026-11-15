@@ -70,6 +70,21 @@ PromptFactory 與 NextStep 收到固定快照，後續執行不會改變已保�
 返回 Use(key) 則繼續同一個 thread。Create 必須在宣告順序中先於 Use，
 實際執行路徑也必須先執行 Create；跳過必要的 Create 時，Use 會回報錯誤。
 
+## 推理強度
+
+App Server 與 Exec 共用 `CodexClient.CodexReasoningEffort` 和 `CodexClient.CodexSandboxMode`，
+呼叫端可透過 `using CodexClient;` 引用。推理強度設定方式：
+
+```csharp
+Options = new AppServerOptions
+{
+    ReasoningEffort = CodexReasoningEffort.High
+}
+```
+
+可設定 Minimal、Low、Medium、High、XHigh；實際支援程度依模型而定。
+未指定（null）時不傳送 effort，沿用 thread 設定；無效的 enum 值會在送出前被拒絕。
+
 ## 網路權限
 
 每個步驟可透過 `Options.NetworkAccess` 設定工作區沙箱的網路權限：
@@ -77,7 +92,7 @@ PromptFactory 與 NextStep 收到固定快照，後續執行不會改變已保�
 ```csharp
 Options = new AppServerOptions
 {
-    Sandbox = AppServerSandboxMode.WorkspaceWrite,
+    Sandbox = CodexSandboxMode.WorkspaceWrite,
     NetworkAccess = true
 }
 ```

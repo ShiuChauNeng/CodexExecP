@@ -33,6 +33,12 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 
 
     // Methods
+    /// <summary>
+    /// 啟動 App Server 並完成初始化交握。
+    /// </summary>
+    /// <param name="applicationName">要提供給 App Server 的應用程式名稱。</param>
+    /// <param name="cancellationToken">用於取消啟動作業的權杖。</param>
+    /// <returns>表示啟動作業的非同步工作。</returns>
     public async Task StartAsync(string applicationName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
@@ -66,6 +72,12 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         }
     }
 
+    /// <summary>
+    /// 在指定工作區建立新的 App Server thread。
+    /// </summary>
+    /// <param name="workspaceRoot">thread 使用的工作區根目錄。</param>
+    /// <param name="cancellationToken">用於取消建立作業的權杖。</param>
+    /// <returns>新建立的 thread 識別碼。</returns>
     public async Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
@@ -87,6 +99,15 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         return result.GetProperty("thread").GetProperty("id").GetString() ?? throw new JsonException("Thread ID is missing.");
     }
 
+    /// <summary>
+    /// 在指定 thread 執行一個 turn。
+    /// </summary>
+    /// <param name="threadId">目標 thread 識別碼。</param>
+    /// <param name="prompt">要傳送給模型的提示文字。</param>
+    /// <param name="outputSchema">選用的結構化輸出描述。</param>
+    /// <param name="options">App Server 執行選項。</param>
+    /// <param name="cancellationToken">用於取消 turn 的權杖。</param>
+    /// <returns>非同步回傳 turn 執行結果。</returns>
     public async Task<TurnResult> RunTurnAsync(
         string threadId,
         string prompt,
@@ -222,6 +243,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         }
     }
 
+    /// <summary>
+    /// 確認 Client 已完成 App Server 初始化。
+    /// </summary>
     private void EnsureInitialized()
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
@@ -231,6 +255,10 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         }
     }
 
+    /// <summary>
+    /// 非同步釋放 App Server Client 使用的資源。
+    /// </summary>
+    /// <returns>表示釋放作業的非同步值工作。</returns>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
