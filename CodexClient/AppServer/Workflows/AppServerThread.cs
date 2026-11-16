@@ -6,9 +6,9 @@ namespace CodexClient.AppServer.Workflows;
 public enum AppServerThreadMode
 {
     /// <summary>
-    /// 不共用 thread，每個步驟使用獨立 thread。
+    /// 每次執行都建立獨立的新 thread。
     /// </summary>
-    None,
+    New,
 
     /// 
     /// <summary>建立並儲存可供後續步驟使用的 thread。
@@ -19,10 +19,20 @@ public enum AppServerThreadMode
     /// 
     /// <summary>使用先前建立的 thread。
     /// </summary>
-    Use
+    Use,
+
+    /// <summary>
+    /// 本次 Workflow 執行內，同一步驟重複執行時重用自己的 thread。
+    /// </summary>
+    PerStep,
+
+    /// <summary>
+    /// 使用指定鍵值的 thread；不存在時建立並儲存。
+    /// </summary>
+    GetOrCreate
 }
 
-/// <summary>None 表示該步驟使用獨立的新 thread；Create/Use 在本次 workflow 執行內共用 thread。</summary>
+/// <summary>PerStep 重用步驟專屬 thread；New 每次建立新 thread；Create/Use/GetOrCreate 依鍵值共用 thread。</summary>
 public sealed class AppServerThread
 {
     // Properties
@@ -30,9 +40,14 @@ public sealed class AppServerThread
     public string? Key { get; }
 
     /// <summary>
-    /// 表示不共用 thread 的設定。
+    /// 每次執行都建立獨立的新 thread。
     /// </summary>
-    public static AppServerThread None { get; } = new(AppServerThreadMode.None);
+    public static AppServerThread New { get; } = new(AppServerThreadMode.New);
+
+    /// <summary>
+    /// 第一次執行步驟時建立 thread，返回該步驟時重用；不同步驟互不共用。
+    /// </summary>
+    public static AppServerThread PerStep { get; } = new(AppServerThreadMode.PerStep);
 
 
     // Constructors
@@ -62,5 +77,17 @@ public sealed class AppServerThread
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         return new(AppServerThreadMode.Use, key);
+    }
+
+    /// <summary>
+    /// 使用指定鍵值的 thread；本次 Workflow 尚未建立時才建立並儲存。
+    /// </summary>
+    /// <param name="key">要查找或儲存 thread 識別碼的鍵值。</param>
+    /// <returns>新的 thread 使用設定。</returns>
+    public static AppServerThread GetOrCreate(string key)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        return new(AppServerThreadMode.GetOrCreate, key);
     }
 }

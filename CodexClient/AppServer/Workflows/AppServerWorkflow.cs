@@ -147,9 +147,9 @@ public sealed class AppServerWorkflow
                     return Finish(false, step.Name, results, threads, result.Error);
                 }
 
-                if (step.Thread.Mode == AppServerThreadMode.Create)
+                if (step.Thread.Mode is AppServerThreadMode.Create or AppServerThreadMode.GetOrCreate)
                 {
-                    // 返回 Create 步驟時建立新 thread，後續 Use 取得最新的對應。
+                    // 儲存命名 thread；Create 每次更新，GetOrCreate 延續既有對應。
                     threads[step.Thread.Key!] = result.ThreadId!;
                 }
 
@@ -272,11 +272,24 @@ public sealed class AppServerWorkflow
         AppServerTurnDiagnostics? previousDiagnostics = _client.LastTurnDiagnostics;
         try
         {
-            string prompt = step.CreatePrompt(CreateContext(results, threads));
-            ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
+            threadId = step.Thread.Mode switch
+            {
+                AppServerThreadMode.Use => threads[step.Thread.Key!],
+                AppServerThreadMode.GetOrCreate => threads.GetValueOrDefault(step.Thread.Key!),
+                AppServerThreadMode.PerStep => results.LastOrDefault(result => result.Name == step.Name)?.ThreadId,
+                _ => null
+            };
+            // 只有目標步驟已在同一 thread 執行過，才能省略原始指令。
+            bool resumeForRevision = acceptanceFeedback is not null && threadId is not null &&
+                results.Any(result => result.Name == step.Name && result.ThreadId == threadId);
+            string prompt = resumeForRevision ? "" : step.CreatePrompt(CreateContext(results, threads));
             if (acceptanceFeedback is not null)
             {
-                prompt += "\n\n前次驗收不通過，請依下列問題、證據與建議修正，完成後將再次驗收：\n" +
+                if (!string.IsNullOrEmpty(prompt))
+                {
+                    prompt += "\n\n";
+                }
+                prompt += "前次驗收不通過，請依下列問題、證據與建議修正，完成後將再次驗收：\n" +
                     JsonSerializer.Serialize(new
                     {
                         acceptanceStep = acceptanceFeedback.Name,
@@ -284,9 +297,10 @@ public sealed class AppServerWorkflow
                         acceptance = acceptanceFeedback.Execution!.Data
                     });
             }
+            ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
 
-            progress.Update(AppServerWorkflowStatus.CreatingThread, step.Thread.Mode == AppServerThreadMode.Use ? "準備使用既有 thread。" : "正在建立 thread。", step.Name);
-            threadId = step.Thread.Mode == AppServerThreadMode.Use ? threads[step.Thread.Key!] : await _client.StartThreadAsync(_workspaceRoot, token).WaitAsync(token);
+            progress.Update(AppServerWorkflowStatus.CreatingThread, threadId is not null ? "準備使用既有 thread。" : "正在建立 thread。", step.Name, threadId);
+            threadId ??= await _client.StartThreadAsync(_workspaceRoot, token).WaitAsync(token);
             ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
 
             progress.Update(AppServerWorkflowStatus.Running, "等待 AI 執行結果。", step.Name, threadId);
@@ -455,6 +469,11 @@ public sealed class AppServerWorkflow
             if (step.Thread.Mode == AppServerThreadMode.Create && !keys.Add(step.Thread.Key!))
             {
                 throw new InvalidOperationException($"Thread '{step.Thread.Key}' already exists. Step: {step.Name}");
+            }
+
+            if (step.Thread.Mode == AppServerThreadMode.GetOrCreate)
+            {
+                keys.Add(step.Thread.Key!);
             }
 
             if (step.Thread.Mode == AppServerThreadMode.Use && !keys.Contains(step.Thread.Key!))

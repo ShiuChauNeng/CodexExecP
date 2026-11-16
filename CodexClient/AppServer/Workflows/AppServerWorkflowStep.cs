@@ -12,11 +12,13 @@ public class AppServerWorkflowStep
 
     /// <summary>
     /// 取得步驟使用的固定提示文字；使用提示產生器時為 <see langword="null"/>。
+    /// 驗收返回且延續該步驟原 thread 時，改送修正指令與驗收結果，不重送此文字。
     /// </summary>
     public string? Prompt { get; }
 
     /// <summary>
     /// 取得依工作流程內容產生提示文字的委派；使用固定提示文字時為 <see langword="null"/>。
+    /// 驗收返回且延續該步驟原 thread 時不呼叫此委派。
     /// </summary>
     public Func<AppServerWorkflowContext, string>? PromptFactory { get; }
 
@@ -26,9 +28,9 @@ public class AppServerWorkflowStep
     public Func<AppServerWorkflowContext, string?>? NextStep { get; init; }
 
     /// <summary>
-    /// 取得或設定此步驟使用 App Server thread 的方式。
+    /// 取得或設定此步驟使用 App Server thread 的方式；預設於本次 Workflow 內重用步驟專屬 thread。
     /// </summary>
-    public AppServerThread Thread { get; init; } = AppServerThread.None;
+    public AppServerThread Thread { get; init; } = AppServerThread.PerStep;
 
     /// <summary>
     /// 取得或設定此步驟使用的 App Server 執行選項；指定時會取代建構式建立的選項（包含沙箱模式）。

@@ -134,6 +134,47 @@ internal static class WorkflowRoutingChecks
             }).RunAsync();
             Assert(!result.Succeeded && !routed);
         });
+        await Check("default steps reuse their own thread on return and reset between runs", async () =>
+        {
+            var client = new ScriptedClient();
+            var workflow = Workflow(client)
+                .Add(new("Implement", "Implement"))
+                .Add(new("Review", "Review") { NextStep = context => context.Steps.Count < 4 ? "Implement" : null });
+            var first = await workflow.RunAsync();
+            var second = await workflow.RunAsync();
+            Assert(first.Succeeded && second.Succeeded && client.ThreadCount == 4);
+            Assert(client.ThreadIds.SequenceEqual(["thread-1", "thread-2", "thread-1", "thread-2",
+                "thread-3", "thread-4", "thread-3", "thread-4"]));
+        });
+        await Check("explicit New creates a fresh thread on every visit", async () =>
+        {
+            var client = new ScriptedClient();
+            var result = await Workflow(client).Add(new("A", "A")
+            {
+                Thread = AppServerThread.New,
+                NextStep = context => context.Steps.Count < 3 ? "A" : null
+            }).RunAsync();
+            Assert(result.Succeeded && client.ThreadCount == 3);
+            Assert(client.ThreadIds.Distinct().Count() == 3);
+        });
+        await Check("GetOrCreate reuses an existing key and creates a missing key after a skipped step", async () =>
+        {
+            var client = new ScriptedClient();
+            var result = await Workflow(client)
+                .Add(new("Create", "Create") { Thread = AppServerThread.Create("shared") })
+                .Add(new("Reuse", "Reuse") { Thread = AppServerThread.GetOrCreate("shared") })
+                .Add(new("ReuseAgain", "Reuse again") { Thread = AppServerThread.GetOrCreate("shared") }).RunAsync();
+            Assert(result.Succeeded && client.ThreadCount == 1 && client.ThreadIds.Distinct().Count() == 1);
+
+            client = new ScriptedClient();
+            result = await Workflow(client)
+                .Add(new("Route", "Route") { NextStep = _ => "Ensure" })
+                .Add(new("Skipped", "Skipped") { Thread = AppServerThread.Create("shared") })
+                .Add(new("Ensure", "Ensure") { Thread = AppServerThread.GetOrCreate("shared") })
+                .Add(new("Use", "Use") { Thread = AppServerThread.Use("shared") }).RunAsync();
+            Assert(result.Succeeded && client.ThreadCount == 2);
+            Assert(client.ThreadIds.SequenceEqual(["thread-1", "thread-2", "thread-2"]));
+        });
         await Check("revisiting Create renews the thread mapping and Use reads the latest", async () =>
         {
             var client = new ScriptedClient();

@@ -30,8 +30,69 @@ internal static class AcceptanceStepChecks
             Assert(failed.Completed && !failed.Accepted && !failed.Succeeded && failed.Error is null);
             Assert(failed.AcceptanceDecision == AcceptanceDecision.NeedsRevision && failed.FailureCount == 1);
             Assert(result.Steps[3].Accepted && result.Steps[3].FailureCount == 1);
+            Assert(result.Steps[0].ThreadId == result.Steps[2].ThreadId);
+            Assert(result.Steps[1].ThreadId == result.Steps[3].ThreadId);
+            Assert(result.Steps.Select(step => step.ThreadId).Distinct().Count() == 3);
             Assert(client.Prompts[2].Contains("Spec and code evidence") && client.Prompts[2].Contains("\"acceptanceStep\":\"Review\""));
             Assert(!client.Prompts[4].Contains("\"acceptanceStep\":\"Review\""));
+        });
+        await Check("GetOrCreate shares A and B across C acceptance retries and resets between runs", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => Result(count % 2 == 1 ? FindingSeverity.Error : null) };
+            var workflow = Workflow(client)
+                .Add(new("A", "[initial:A] implement") { Thread = AppServerThread.GetOrCreate("shared") })
+                .Add(new("B", "[initial:B] continue implementation") { Thread = AppServerThread.Use("shared") })
+                .Add(new AppServerAcceptanceStep("C", "[review:A]") { RetryStep = "A" });
+            var first = await workflow.RunAsync();
+            var second = await workflow.RunAsync();
+            foreach (var result in new[] { first, second })
+            {
+                Assert(result.Succeeded && result.Steps.Select(step => step.Name).SequenceEqual(["A", "B", "C", "A", "B", "C"]));
+                string shared = result.Threads["shared"];
+                Assert(result.Steps.Where(step => step.Name != "C").All(step => step.ThreadId == shared));
+                Assert(result.Steps[2].ThreadId == result.Steps[5].ThreadId && result.Steps[2].ThreadId != shared);
+            }
+            Assert(first.Threads["shared"] != second.Threads["shared"]);
+            Assert(client.Prompts[3].Contains("\"acceptanceStep\":\"C\""));
+            Assert(client.Prompts[0].Contains("[initial:A]") && !client.Prompts[3].Contains("[initial:A]"));
+            Assert(client.Prompts[4].Contains("[initial:B]") && client.Prompts[5].Contains("[review:A]"));
+            Assert(client.Prompts[6].Contains("[initial:A]") && !client.Prompts[9].Contains("[initial:A]"));
+        });
+        await Check("acceptance retries only regenerate the initial prompt when the target lacks its original thread", async () =>
+        {
+            AppServerThread[] modes = [AppServerThread.PerStep, AppServerThread.GetOrCreate("shared"),
+                AppServerThread.Use("seed"), AppServerThread.New, AppServerThread.Create("shared")];
+            foreach (var mode in modes)
+            {
+                var client = new Client { Assessment = (_, count) => Result(count == 1 ? FindingSeverity.Error : null) };
+                int factoryCalls = 0;
+                var workflow = Workflow(client);
+                bool useSeed = mode.Mode == AppServerThreadMode.Use;
+                if (useSeed)
+                {
+                    workflow.Add(new("Seed", "seed") { Thread = AppServerThread.Create("seed") });
+                }
+                workflow.Add(new("Implement", _ => { factoryCalls++; return "[initial:Implement]"; }) { Thread = mode })
+                    .Add(Review());
+                var result = await workflow.RunAsync();
+                bool fresh = mode.Mode is AppServerThreadMode.New or AppServerThreadMode.Create;
+                int offset = useSeed ? 1 : 0;
+                Assert(result.Succeeded && factoryCalls == (fresh ? 2 : 1));
+                Assert(client.Prompts[offset].Contains("[initial:Implement]"));
+                Assert(client.Prompts[offset + 2].Contains("[initial:Implement]") == fresh);
+                Assert(client.Prompts[offset + 2].Contains("Spec and code evidence"));
+                Assert((result.Steps[offset].ThreadId == result.Steps[offset + 2].ThreadId) == !fresh);
+            }
+        });
+        await Check("a retry target not previously executed retains its prompt on an existing shared thread", async () =>
+        {
+            var client = new Client { Assessment = (_, _) => Result(FindingSeverity.Error) };
+            var result = await Workflow(client)
+                .Add(new("Seed", "seed") { Thread = AppServerThread.Create("shared") })
+                .Add(Review())
+                .Add(new("Implement", "[initial:Implement]") { Thread = AppServerThread.Use("shared") }).RunAsync();
+            Assert(result.Steps.Count == 3 && result.Steps.Last().Accepted);
+            Assert(client.Prompts[2].Contains("[initial:Implement]") && client.Prompts[2].Contains("Spec and code evidence"));
         });
         await Check("third failed acceptance stops without a fourth implementation", async () =>
         {
