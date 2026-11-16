@@ -1,3 +1,5 @@
+using CodexClient.Models;
+
 namespace CodexClient.AppServer.Workflows;
 
 public class AppServerWorkflowStep
@@ -29,7 +31,7 @@ public class AppServerWorkflowStep
     public AppServerThread Thread { get; init; } = AppServerThread.None;
 
     /// <summary>
-    /// 取得或設定此步驟使用的 App Server 執行選項。
+    /// 取得或設定此步驟使用的 App Server 執行選項；指定時會取代建構式建立的選項（包含沙箱模式）。
     /// </summary>
     public AppServerOptions Options { get; init; } = new();
 
@@ -69,20 +71,34 @@ public class AppServerWorkflowStep
 
 
     // Constructors
-    public AppServerWorkflowStep(string name, string prompt)
+    /// <summary>
+    /// 以固定提示文字與沙箱模式建立步驟。
+    /// </summary>
+    /// <param name="name">步驟名稱。</param>
+    /// <param name="prompt">要執行的提示文字。</param>
+    /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
+    public AppServerWorkflowStep(string name, string prompt, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
 
         (Name, Prompt) = (name, prompt);
+        Options = new AppServerOptions { Sandbox = sandbox };
     }
 
-    public AppServerWorkflowStep(string name, Func<AppServerWorkflowContext, string> promptFactory)
+    /// <summary>
+    /// 以提示產生器與沙箱模式建立步驟。
+    /// </summary>
+    /// <param name="name">步驟名稱。</param>
+    /// <param name="promptFactory">產生提示文字的委派。</param>
+    /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
+    public AppServerWorkflowStep(string name, Func<AppServerWorkflowContext, string> promptFactory, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(promptFactory);
 
         (Name, PromptFactory) = (name, promptFactory);
+        Options = new AppServerOptions { Sandbox = sandbox };
     }
 
 

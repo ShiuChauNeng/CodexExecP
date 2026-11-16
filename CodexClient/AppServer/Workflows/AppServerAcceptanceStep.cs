@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CodexClient.Acceptance;
+using CodexClient.Models;
 
 namespace CodexClient.AppServer.Workflows;
 
@@ -34,7 +35,9 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
     /// </summary>
     /// <param name="name">步驟名稱。</param>
     /// <param name="prompt">要執行的提示文字。</param>
-    public AppServerAcceptanceStep(string name, string prompt) : base(name, prompt)
+    /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
+    public AppServerAcceptanceStep(string name, string prompt, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
+        : base(name, prompt, sandbox)
     {
         DataSchema = AcceptanceResultSchema.Value;
         StopOnIssues = false;
@@ -45,8 +48,9 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
     /// </summary>
     /// <param name="name">步驟名稱。</param>
     /// <param name="promptFactory">產生提示文字的委派。</param>
-    public AppServerAcceptanceStep(string name, Func<AppServerWorkflowContext, string> promptFactory)
-        : base(name, promptFactory)
+    /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
+    public AppServerAcceptanceStep(string name, Func<AppServerWorkflowContext, string> promptFactory, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
+        : base(name, promptFactory, sandbox)
     {
         DataSchema = AcceptanceResultSchema.Value;
         StopOnIssues = false;
