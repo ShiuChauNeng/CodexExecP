@@ -11,6 +11,20 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         ArgumentNullException.ThrowIfNull(progress);
         string name = progress.StepName ?? "Workflow";
         string message = progress.IsHeartbeat ? $"仍在等待：{progress.Message}" : progress.Message;
-        Console.WriteLine($"[{progress.Timestamp:HH:mm:ss}] [{name}] {message}（累計 {progress.Elapsed.TotalSeconds:F0} 秒）");
+        string line = $"[{progress.Timestamp:HH:mm:ss}] [{name}] {message}（累計 {progress.Elapsed.TotalSeconds:F0} 秒）";
+        if (!progress.IsHeartbeat && progress.Status is AppServerWorkflowStatus.NeedsRevision or AppServerWorkflowStatus.Cancelled)
+        {
+            ConsoleWorkflowOutput.WriteOrangeLine(line);
+            return;
+        }
+        ConsoleColor? color = progress.IsHeartbeat ? ConsoleColor.DarkGray : progress.Status switch
+        {
+            AppServerWorkflowStatus.Running => ConsoleColor.DarkGray,
+            AppServerWorkflowStatus.WaitingForInput => ConsoleColor.Cyan,
+            AppServerWorkflowStatus.StepCompleted or AppServerWorkflowStatus.Completed => ConsoleColor.Green,
+            AppServerWorkflowStatus.StepFailed or AppServerWorkflowStatus.Stopped or AppServerWorkflowStatus.Faulted => ConsoleColor.Red,
+            _ => null
+        };
+        ConsoleWorkflowOutput.WriteLine(line, color);
     }
 }

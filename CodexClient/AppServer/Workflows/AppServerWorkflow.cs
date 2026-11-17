@@ -173,7 +173,7 @@ public sealed class AppServerWorkflow
 
                         nextIndex = indices[acceptance.RetryStep];
                         retryFeedback = result;
-                        progress.Update(AppServerWorkflowStatus.Running, $"{step.Name} 驗收不通過，返回 {acceptance.RetryStep}（累計失敗 {failureCount} 次）。", step.Name, result.ThreadId);
+                        progress.Update(AppServerWorkflowStatus.NeedsRevision, $"{step.Name} 驗收不通過，返回 {acceptance.RetryStep}（累計失敗 {failureCount} 次）。", step.Name, result.ThreadId);
                         continue;
                     }
                 }
@@ -445,7 +445,10 @@ public sealed class AppServerWorkflow
         {
             message = "步驟完成。";
         }
-        progress.Update(accepted ? AppServerWorkflowStatus.StepCompleted : AppServerWorkflowStatus.StepFailed,
+        AppServerWorkflowStatus status = accepted ? AppServerWorkflowStatus.StepCompleted
+            : result.Error is null && result.AcceptanceDecision == AcceptanceDecision.NeedsRevision
+                ? AppServerWorkflowStatus.NeedsRevision : AppServerWorkflowStatus.StepFailed;
+        progress.Update(status,
             message, result.Name, result.ThreadId);
     }
 

@@ -13,16 +13,17 @@ public sealed class ConsoleWorkflowInputHandler
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        Console.WriteLine($"[{request.StepName}] {request.Message}");
+        ConsoleWorkflowOutput.WriteLine($"[{request.StepName}] 請回答以下問題：", ConsoleColor.Cyan);
+        ConsoleWorkflowOutput.WriteLine(request.Message);
         var answers = new List<string>();
         foreach (string question in request.Questions)
         {
-            Console.WriteLine(question);
+            ConsoleWorkflowOutput.WriteLine(question);
             string answer;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Console.Write("請輸入答案：");
+                ConsoleWorkflowOutput.Write("請輸入答案：", ConsoleColor.Cyan);
                 answer = await Console.In.ReadLineAsync(cancellationToken) ?? throw new OperationCanceledException("使用者輸入已結束。");
             }
             while (string.IsNullOrWhiteSpace(answer));

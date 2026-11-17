@@ -12,7 +12,8 @@ public enum AppServerWorkflowStatus
     Stopped,
     Completed,
     Cancelled,
-    Faulted
+    Faulted,
+    NeedsRevision
 }
 
 /// <summary>
