@@ -94,7 +94,8 @@ public sealed record AcceptanceResult(
     }
 
     /// <summary>
-    /// 必要項目由呼叫端依 Spec 提供；缺項或未完成優先回傳 Inconclusive，避免以「沒有 Error」誤判通過。
+    /// 已知缺陷優先返回修正；沒有缺陷時，必要項目缺漏或未完成才回傳 Inconclusive。
+    /// 非必要項目的 NotEvaluated 保留在結果中，不阻擋流程。
     /// 此方法不會重新判讀 Spec、執行測試或確認報表存在。
     /// </summary>
     public AcceptanceDecision Decide(IReadOnlyCollection<string> requiredCriterionIds, FindingSeverity failureSeverity = FindingSeverity.Error)
@@ -110,16 +111,6 @@ public sealed record AcceptanceResult(
         }
 
         Validate();
-        var checks = Checks.ToDictionary(check => check.CriterionId, StringComparer.Ordinal);
-        if (requiredCriterionIds.Any(id => !checks.ContainsKey(id)))
-        {
-            return AcceptanceDecision.Inconclusive;
-        }
-        if (Checks.Any(check => check.Status == AcceptanceCheckStatus.NotEvaluated))
-        {
-            return AcceptanceDecision.Inconclusive;
-        }
-
         // 若有必要項目不符合規格，或有符合 failureSeverity 的 Findings，回傳 NeedsRevision。
         if (Checks.Any(check => check.Status == AcceptanceCheckStatus.Failed) ||
             Findings.Any(finding => failureSeverity switch
@@ -131,6 +122,13 @@ public sealed record AcceptanceResult(
             }))
         {
             return AcceptanceDecision.NeedsRevision;
+        }
+
+        var checks = Checks.ToDictionary(check => check.CriterionId, StringComparer.Ordinal);
+        if (requiredCriterionIds.Any(id => !checks.TryGetValue(id, out var check) ||
+            check.Status == AcceptanceCheckStatus.NotEvaluated))
+        {
+            return AcceptanceDecision.Inconclusive;
         }
 
         return AcceptanceDecision.Passed;

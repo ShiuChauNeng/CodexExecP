@@ -21,17 +21,21 @@ C# 只驗證資料完整性與決定流程方向，不重新判讀規格是否�
 
 `AcceptanceResult.Decide(requiredCriterionIds, failureSeverity)` 的結果（failureSeverity 預設 Error）：
 
-1. 必要項目漏查，或任何回報項目是 `NotEvaluated`：`Inconclusive`，停止並處理無法完成驗收的原因。
-2. 所有必要項目均已檢查，但有 `Failed` 或達到失敗等級的問題：`NeedsRevision`，交回實作步驟修正。
+1. 有 `Failed` 或達到失敗等級的問題：`NeedsRevision`，優先交回實作步驟修正，保留未完成項目。
+2. 沒有上述缺陷，但必要項目漏查或為 `NotEvaluated`：`Inconclusive`，交由 Workflow 有限次補查。
 3. 所有必要項目均已檢查，且沒有 `Failed` 或達到失敗等級的問題：`Passed`，允許後續步驟。
 
-若同時有 Error 與未完成項目，優先回傳 `Inconclusive`；已發現的問題仍保留在 Findings。
+非必要項目的 `NotEvaluated` 保留在 Checks 與報表中，不阻擋必要項目通過；不會將其狀態改為 Passed。
+若同時有 Error 與未完成項目，優先回傳 `NeedsRevision`，避免已知缺陷無法進入修正流程。
+未完成項目會在後續驗收繼續檢查；已知缺陷不能因未完成項目而被忽略。
 資料格式錯誤（例如空白證據、重複 ID、未知等級）會拋出例外，與正常的驗收不合格分開。
 
 ## 與 AppServerWorkflow 搭配
 
 一般使用情境建議直接使用 [AppServerAcceptanceStep](../AppServer/Workflows/README.md)：
 設定 FailureSeverity、MaxFailures、RetryStep 即可自動判斷並返回修正。
+`Inconclusive` 預設額外補查驗收步驟最多兩次，不返回實作步驟，也不增加產品失敗次數。
+可用 MaxInconclusiveRetries 調整上限，設為 0 恢復立即停止。補查次數各驗收步驟獨立，於每次 Run 重設。
 以下是以一般 Step 手動處理契約的進階用法。
 
 將 `AcceptanceResultSchema.Value` 指定給驗收步驟的 `DataSchema`。

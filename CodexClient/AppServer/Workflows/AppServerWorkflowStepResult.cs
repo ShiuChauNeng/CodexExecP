@@ -44,6 +44,11 @@ public sealed record AppServerWorkflowStepResult(string Name, string? ThreadId, 
     public int FailureCount { get; internal init; }
 
     /// <summary>
+    /// 此驗收步驟在本次 Run 累計回傳 Inconclusive 的次數，與產品缺陷次數分開。
+    /// </summary>
+    public int InconclusiveCount { get; internal init; }
+
+    /// <summary>
     /// 取得步驟是否成功完成並通過接受條件。
     /// </summary>
     public bool Succeeded => Completed && (AcceptanceDecision is null ? !HasIssues : Accepted);

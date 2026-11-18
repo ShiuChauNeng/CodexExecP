@@ -27,9 +27,27 @@ internal static class AcceptanceChecks
             Assert((Result() with { Checks = [] }).Decide(RequiredCriteria) == AcceptanceDecision.Inconclusive));
         Check("not evaluated is inconclusive rather than a product failure", () =>
             Assert(Result(AcceptanceCheckStatus.NotEvaluated).Decide(RequiredCriteria) == AcceptanceDecision.Inconclusive));
-        Check("incomplete acceptance takes priority over revision", () =>
+        Check("known defects take priority over incomplete acceptance", () =>
             Assert(Result(AcceptanceCheckStatus.NotEvaluated, [Finding(FindingSeverity.Error)])
-                .Decide(RequiredCriteria) == AcceptanceDecision.Inconclusive));
+                .Decide(RequiredCriteria) == AcceptanceDecision.NeedsRevision));
+        Check("failed checks take priority over missing required criteria", () =>
+            Assert((Result() with { Checks = [new("SPEC-001", AcceptanceCheckStatus.Failed, "Spec violation")] })
+                .Decide(RequiredCriteria) == AcceptanceDecision.NeedsRevision));
+        Check("nonrequired unevaluated checks do not block required checks", () =>
+        {
+            var result = Result() with { Checks = [.. Result().Checks,
+                new("OPTIONAL-001", AcceptanceCheckStatus.NotEvaluated, "Optional evidence unavailable")] };
+            Assert(result.Decide(RequiredCriteria) == AcceptanceDecision.Passed);
+            Assert(result.Checks.Last().Status == AcceptanceCheckStatus.NotEvaluated);
+        });
+        Check("nonrequired failed checks and severity thresholds still request revision", () =>
+        {
+            var result = Result() with { Checks = [.. Result().Checks,
+                new("OPTIONAL-001", AcceptanceCheckStatus.Failed, "Confirmed defect")] };
+            Assert(result.Decide(RequiredCriteria) == AcceptanceDecision.NeedsRevision);
+            Assert(Result(AcceptanceCheckStatus.NotEvaluated, [Finding(FindingSeverity.Warning)])
+                .Decide(RequiredCriteria, FindingSeverity.Warning) == AcceptanceDecision.NeedsRevision);
+        });
         Check("duplicate criteria are invalid output", () =>
             Throws<ArgumentException>(() => (Result() with
                 { Checks = [new("SPEC-001", AcceptanceCheckStatus.Passed, "a"), new("SPEC-001", AcceptanceCheckStatus.Failed, "b")] }).Validate()));

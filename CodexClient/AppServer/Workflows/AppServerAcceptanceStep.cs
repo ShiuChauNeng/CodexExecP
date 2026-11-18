@@ -21,12 +21,19 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
     public int MaxFailures { get; init; } = 3;
 
     /// <summary>
+    /// 同一次 Run 內，無法判定時最多額外補查的次數；預設 2，設為 0 則立即停止。
+    /// 補查只重跑驗收步驟，不計入產品缺陷次數，各驗收步驟獨立累計。
+    /// </summary>
+    public int MaxInconclusiveRetries { get; init; } = 2;
+
+    /// <summary>
     /// 驗收不通過時要返回的步驟名稱。
     /// </summary>
     public string RetryStep { get; init; } = "";
 
     /// <summary>
-    /// 選填的必要項目清單，用來發現 Skill 漏查。未指定時只能檢查 Skill 回報的項目。
+    /// 選填的必要項目清單，用來發現 Skill 漏查；清單外的 NotEvaluated 不阻擋流程。
+    /// 未指定時將 Skill 回報的所有項目視為必要，無法發現未回報的項目。
     /// </summary>
     public IReadOnlyList<string> RequiredCriterionIds { get; init; } = [];
 
@@ -111,6 +118,10 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
         if (MaxFailures <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(MaxFailures));
+        }
+        if (MaxInconclusiveRetries < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaxInconclusiveRetries));
         }
         if (!Enum.IsDefined(FailureSeverity))
         {

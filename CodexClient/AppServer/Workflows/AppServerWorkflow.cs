@@ -115,6 +115,7 @@ public sealed class AppServerWorkflow
             var results = new List<AppServerWorkflowStepResult>();
             var threads = new Dictionary<string, string>(StringComparer.Ordinal);
             var failures = new Dictionary<string, int>(StringComparer.Ordinal);
+            var inconclusiveCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             var indices = steps.Select((step, index) => (step.Name, index)).ToDictionary(pair => pair.Name, pair => pair.index, StringComparer.Ordinal);
 
             int nextIndex = 0;
@@ -128,15 +129,20 @@ public sealed class AppServerWorkflow
                 retryFeedback = null;
                 bool taskAccepted = result.Completed && (!step.StopOnIssues || !result.HasIssues);
                 int failureCount = failures.GetValueOrDefault(step.Name);
+                int inconclusiveCount = inconclusiveCounts.GetValueOrDefault(step.Name);
                 // 如果步驟被接受但驗收不通過，則增加失敗計數。
                 if (taskAccepted && result.AcceptanceDecision == AcceptanceDecision.NeedsRevision)
                 {
                     failures[step.Name] = ++failureCount;
                 }
+                if (taskAccepted && result.AcceptanceDecision == AcceptanceDecision.Inconclusive)
+                {
+                    inconclusiveCounts[step.Name] = ++inconclusiveCount;
+                }
 
                 // 步驟被接受且驗收通過，才算是最終接受。
                 bool accepted = taskAccepted && (result.AcceptanceDecision is null or AcceptanceDecision.Passed);
-                result = result with { Accepted = accepted, FailureCount = failureCount };
+                result = result with { Accepted = accepted, FailureCount = failureCount, InconclusiveCount = inconclusiveCount };
                 results.Add(result);
                 ReportStepResult(result, accepted, progress);
 
@@ -153,12 +159,23 @@ public sealed class AppServerWorkflow
                     threads[step.Thread.Key!] = result.ThreadId!;
                 }
 
-                // 驗收流程：如果步驟是驗收步驟，且驗收結果為 NeedsRevision，則檢查是否超過最大失敗次數，若未超過則返回 RetryStep。
+                // 無法判定時補查驗收；已知缺陷則返回實作，兩種次數獨立限制。
                 if (step is AppServerAcceptanceStep acceptance)
                 {
                     if (result.AcceptanceDecision == AcceptanceDecision.Inconclusive)
                     {
-                        progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name} 無法完成驗收，需要確認。", step.Name, result.ThreadId);
+                        if (inconclusiveCount <= acceptance.MaxInconclusiveRetries)
+                        {
+                            retryFeedback = result;
+                            progress.Update(AppServerWorkflowStatus.Validating,
+                                $"{step.Name} 尚有必要項目無法判定，補查驗收（第 {inconclusiveCount}/{acceptance.MaxInconclusiveRetries} 次）。",
+                                step.Name, result.ThreadId);
+                            continue;
+                        }
+
+                        progress.Update(AppServerWorkflowStatus.Stopped,
+                            $"{step.Name} 無法完成驗收，已達補查上限（{acceptance.MaxInconclusiveRetries} 次），需要確認。",
+                            step.Name, result.ThreadId);
                         return Finish(false, step.Name, results, threads);
                     }
 
@@ -244,7 +261,7 @@ public sealed class AppServerWorkflow
     /// <param name="threads">目前已建立的 thread 對應表。</param>
     /// <param name="progress">Workflow 進度範圍。</param>
     /// <param name="cancellationToken">用於取消步驟的權杖。</param>
-    /// <param name="retryFeedback">前次驗收失敗提供給重試步驟的回饋。</param>
+    /// <param name="acceptanceFeedback">前次驗收提供給修正或補查步驟的回饋。</param>
     /// <returns>非同步回傳步驟執行結果。</returns>
     private async Task<AppServerWorkflowStepResult> ExecuteStepAsync(
         AppServerWorkflowStep step,
@@ -280,7 +297,7 @@ public sealed class AppServerWorkflow
                 _ => null
             };
             // 只有目標步驟已在同一 thread 執行過，才能省略原始指令。
-            bool resumeForRevision = acceptanceFeedback is not null && threadId is not null &&
+            bool resumeForRevision = acceptanceFeedback?.AcceptanceDecision == AcceptanceDecision.NeedsRevision && threadId is not null &&
                 results.Any(result => result.Name == step.Name && result.ThreadId == threadId);
             string prompt = resumeForRevision ? "" : step.CreatePrompt(CreateContext(results, threads));
             if (acceptanceFeedback is not null)
@@ -289,11 +306,16 @@ public sealed class AppServerWorkflow
                 {
                     prompt += "\n\n";
                 }
-                prompt += "前次驗收不通過，請依下列問題、證據與建議修正，完成後將再次驗收：\n" +
+                bool recheck = acceptanceFeedback.AcceptanceDecision == AcceptanceDecision.Inconclusive;
+                prompt += (recheck
+                    ? "前次驗收尚有必要項目無法判定，請依下列結果與原因補查缺漏或 NotEvaluated 的必要項目，保留完整驗收清單、已知缺陷與證據並更新報表。遵守原驗收範圍，不修改實作或放寬必要條件；仍無法判定時保留具體原因，不可當作通過：\n"
+                    : "前次驗收不通過，請依下列問題、證據與建議修正，完成後將再次驗收：\n") +
                     JsonSerializer.Serialize(new
                     {
                         acceptanceStep = acceptanceFeedback.Name,
                         failureCount = acceptanceFeedback.FailureCount,
+                        inconclusiveCount = acceptanceFeedback.InconclusiveCount,
+                        issues = acceptanceFeedback.Execution!.Issues,
                         acceptance = acceptanceFeedback.Execution!.Data
                     });
             }
@@ -447,7 +469,9 @@ public sealed class AppServerWorkflow
         }
         AppServerWorkflowStatus status = accepted ? AppServerWorkflowStatus.StepCompleted
             : result.Error is null && result.AcceptanceDecision == AcceptanceDecision.NeedsRevision
-                ? AppServerWorkflowStatus.NeedsRevision : AppServerWorkflowStatus.StepFailed;
+                ? AppServerWorkflowStatus.NeedsRevision
+                : result.Error is null && result.AcceptanceDecision == AcceptanceDecision.Inconclusive
+                    ? AppServerWorkflowStatus.Validating : AppServerWorkflowStatus.StepFailed;
         progress.Update(status,
             message, result.Name, result.ThreadId);
     }

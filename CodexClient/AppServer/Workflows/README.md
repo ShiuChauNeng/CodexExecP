@@ -9,6 +9,7 @@ var acceptance = new AppServerAcceptanceStep("Acceptance", "使用驗收 Skill �
 {
     FailureSeverity = FindingSeverity.Error,
     MaxFailures = 3,
+    MaxInconclusiveRetries = 2,
     RetryStep = "Implement"
 };
 
@@ -21,19 +22,24 @@ workflow.Add(implementStep).Add(acceptance).Add(styleStep);
 
 - `FailureSeverity` 預設 Error；嚴重程度由高至低為 Error、Warning、Info。設為 Warning 時，Error 與 Warning 都算失敗。
 - `MaxFailures` 預設 3，第三次失敗即停止，不再返回修正；第三次驗收若通過，仍可繼續。
+- `MaxInconclusiveRetries` 預設 2；必要項目無法判定時，只重跑驗收步驟補查，最多額外兩次。設為 0 則立即停止。
+  補查使用該步驟原有的 Thread 設定，保留原驗收指令，附上前輪完整結果、問題及證據；不返回實作步驟。
+  補查額度與產品缺陷次數分開，各驗收步驟在同一次 Run 中獨立累計，不因中途修正或通過而重設。
 - `RetryStep` 必須指定已加入 Workflow 的步驟名稱，區分大小寫。
 - 各驗收 Step 在同一次 Run 中獨立累計失敗次數，通過不清零；每次 RunAsync 重新計算。
 - `RequiredCriterionIds` 是選填的必要項目清單，用來發現漏查。清單會自動加入驗收 Prompt。
-  未提供時只能依 Skill 回報的 Checks 判斷，無法知道它是否遺漏 Spec 中的項目。
+  清單外的 NotEvaluated 保留為限制，不阻擋流程；已證實的 Failed 或達到失敗等級的問題仍會返回修正。
+  未提供時將 Skill 回報的所有 Checks 視為必要，無法知道它是否遺漏 Spec 中的項目。
 
 驗收 Step 自動使用 AcceptanceResultSchema，依驗收資料判斷：
 
 | 結果 | 行為 |
 |---|---|
 | 所有必要項目完成，沒有達到失敗等級的問題 | 執行加入順序中的下一步 |
-| 有達到失敗等級的問題，或 Check 為 Failed | 累計一次失敗，未達上限時返回 RetryStep |
+| 有達到失敗等級的問題，或 Check 為 Failed | 優先累計一次失敗，未達上限時返回 RetryStep；保留未判定項目 |
 | 達到 MaxFailures | 停止 Workflow，保留最後結果與次數 |
-| NotEvaluated、缺少必要項目或空白的 Checks 清單 | 以 Inconclusive 停止，不增加失敗次數 |
+| 無已知缺陷，但必要項目 NotEvaluated、缺少必要項目或空白的 Checks 清單 | 以 Inconclusive 補查驗收，超過補查上限才停止，不增加產品失敗次數 |
+| 僅非必要項目 NotEvaluated，必要項目通過且無已知缺陷 | 保留未判定項目，繼續下一步 |
 | 任務回報 failed、格式錯誤或驗證 callback 失敗 | 停止，不當成產品缺陷反覆修正 |
 
 Failed 的驗收項目代表必要條件不符合，即使 Findings 沒有 Error，也會判定失敗。
@@ -51,7 +57,8 @@ Failed 的驗收項目代表必要條件不符合，即使 Findings 沒有 Error
 可使用 ValidateCompletionAsync 加上這些專案檢查。DataSchema 必須保持預設的驗收 Schema，
 驗收 Step 也不能同時設定 NextStep，避免與自動分流衝突。
 
-`result.Steps` 保留每次執行；透過各結果的 AcceptanceDecision、FailureCount 查閱驗收狀態。
+`result.Steps` 保留每次執行；透過各結果的 AcceptanceDecision、FailureCount、InconclusiveCount 查閱驗收狀態。
+InconclusiveCount 為累計回傳無法判定的次數；例如補查上限為 2，第三次仍無法判定時停止。
 驗收不通過但已正常執行時，Completed=true、Accepted=false、Succeeded=false、Error=null。
 重跑後通過可使整個 Workflow 成功，先前失敗的驗收紀錄仍保留。
 

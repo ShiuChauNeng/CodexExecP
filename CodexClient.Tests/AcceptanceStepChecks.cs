@@ -152,18 +152,107 @@ internal static class AcceptanceStepChecks
             var second = await workflow.RunAsync();
             Assert(first.Succeeded && second.Succeeded && first.Steps.Last().FailureCount == 1 && second.Steps.Last().FailureCount == 1);
         });
-        await Check("inconclusive and empty assessments stop without counting a product failure", async () =>
+        await Check("inconclusive and empty assessments stop after bounded rechecks without a product failure", async () =>
         {
             foreach (bool empty in new[] { false, true })
             {
                 var client = new Client { Assessment = (_, _) => Result() with
                     { Checks = empty ? [] : [new("SPEC-001", AcceptanceCheckStatus.NotEvaluated, "test environment unavailable")] } };
                 var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
-                Assert(!result.Succeeded && result.Steps.Count == 2 && result.Error is null);
+                Assert(!result.Succeeded && result.Steps.Count == 4 && result.Error is null);
                 Assert(result.Steps[1].AcceptanceDecision == AcceptanceDecision.Inconclusive && result.Steps[1].FailureCount == 0);
+                Assert(result.Steps.Last().InconclusiveCount == 3 && result.Steps.Last().FailureCount == 0);
+                Assert(result.Steps.Skip(1).All(step => step.Name == "Review" && !step.Accepted));
             }
         });
-        await Check("required criterion IDs are sent to the skill and missing checks stop", async () =>
+        await Check("recheck can complete acceptance on the same thread without rerunning implementation", async () =>
+        {
+            var client = new Client { TaskIssues = true, Assessment = (_, count) => count == 1
+                ? Result() with { Checks = [new("SPEC-001", AcceptanceCheckStatus.NotEvaluated, "Contract evidence missing")] }
+                : Result() };
+            var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review())
+                .Add(new("Style", "style")).RunAsync();
+            Assert(result.Succeeded && result.Steps.Select(s => s.Name).SequenceEqual(["Implement", "Review", "Review", "Style"]));
+            Assert(result.Steps[1].ThreadId == result.Steps[2].ThreadId);
+            Assert(result.Steps[2].FailureCount == 0 && result.Steps[2].InconclusiveCount == 1 && result.Steps[2].Accepted);
+            Assert(client.Prompts[2].Contains("Contract evidence missing") && client.Prompts[2].Contains("[review:A]"));
+            Assert(client.Prompts[2].Contains("不修改實作") && client.Prompts[2].Contains("GOGO.txt"));
+            Assert(!client.Prompts[3].Contains("\"acceptanceStep\""));
+        });
+        await Check("known defects are revised before unresolved necessary checks are rechecked", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => count < 3
+                ? Result(count == 1 ? FindingSeverity.Error : null) with
+                    { Checks = [new("SPEC-001", AcceptanceCheckStatus.NotEvaluated, "Missing contract")] }
+                : Result() };
+            var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
+            Assert(result.Succeeded && result.Steps.Select(s => s.Name).SequenceEqual(["Implement", "Review", "Implement", "Review", "Review"]));
+            Assert(result.Steps[1].AcceptanceDecision == AcceptanceDecision.NeedsRevision);
+            Assert(result.Steps[3].AcceptanceDecision == AcceptanceDecision.Inconclusive);
+            Assert(result.Steps.Last().FailureCount == 1 && result.Steps.Last().InconclusiveCount == 1);
+        });
+        await Check("explicit required criteria allow optional unevaluated checks without rechecking", async () =>
+        {
+            var client = new Client { Assessment = (_, _) => Result() with { Checks = [.. Result().Checks,
+                new("OPTIONAL-001", AcceptanceCheckStatus.NotEvaluated, "Optional limitation")] } };
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]")
+                    { RetryStep = "Implement", RequiredCriterionIds = ["SPEC-001"] }).RunAsync();
+            Assert(result.Succeeded && result.Steps.Count == 2 && result.Steps.Last().InconclusiveCount == 0);
+            Assert(result.Steps.Last().GetData<AcceptanceResult>().Checks.Last().Status == AcceptanceCheckStatus.NotEvaluated);
+        });
+        await Check("unspecified required criteria keep all reported checks necessary", async () =>
+        {
+            var client = new Client { Assessment = (_, _) => Result() with { Checks = [.. Result().Checks,
+                new("EXTRA-001", AcceptanceCheckStatus.NotEvaluated, "Missing evidence")] } };
+            var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
+            Assert(!result.Succeeded && result.Steps.Last().InconclusiveCount == 3);
+        });
+        await Check("zero rechecks restores immediate stopping", async () =>
+        {
+            var client = new Client { Assessment = (_, _) => Result() with { Checks = [] } };
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]")
+                    { RetryStep = "Implement", MaxInconclusiveRetries = 0 }).RunAsync();
+            Assert(!result.Succeeded && result.Steps.Count == 2 && result.Steps.Last().InconclusiveCount == 1);
+        });
+        await Check("recheck counts are independent per acceptance step and reset between runs", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => count % 2 == 1
+                ? Result() with { Checks = [] } : Result() };
+            var workflow = Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("ReviewA", "[review:A]")
+                    { RetryStep = "Implement", MaxInconclusiveRetries = 1 })
+                .Add(new AppServerAcceptanceStep("ReviewB", "[review:B]")
+                    { RetryStep = "Implement", MaxInconclusiveRetries = 1 });
+            foreach (var result in new[] { await workflow.RunAsync(), await workflow.RunAsync() })
+            {
+                Assert(result.Succeeded && result.Steps.Count == 5);
+                Assert(result.Steps.Skip(1).All(s => s.InconclusiveCount == 1 && s.FailureCount == 0));
+            }
+        });
+        await Check("rechecks remain bounded across intervening product revisions", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => count == 2
+                ? Result(FindingSeverity.Error) : Result() with { Checks = [] } };
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]")
+                    { RetryStep = "Implement", MaxInconclusiveRetries = 1 }).RunAsync();
+            Assert(!result.Succeeded && result.Steps.Count == 5);
+            Assert(result.Steps.Last().FailureCount == 1 && result.Steps.Last().InconclusiveCount == 2);
+        });
+        await Check("rechecking on fresh threads preserves the original prompt and evidence", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => count == 1
+                ? Result() with { Checks = [new("SPEC-001", AcceptanceCheckStatus.NotEvaluated, "Missing contract")] }
+                : Result() };
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]")
+                    { RetryStep = "Implement", Thread = AppServerThread.New }).RunAsync();
+            Assert(result.Succeeded && result.Steps[1].ThreadId != result.Steps[2].ThreadId);
+            Assert(client.Prompts[2].Contains("[review:A]") && client.Prompts[2].Contains("Missing contract"));
+        });
+        await Check("required criterion IDs are sent on rechecks and missing checks eventually stop", async () =>
         {
             var client = new Client();
             var result = await Workflow(client).Add(new("Implement", "implement"))
@@ -172,7 +261,8 @@ internal static class AcceptanceStepChecks
                     RetryStep = "Implement", RequiredCriterionIds = ["SPEC-001", "SPEC-002"]
                 }).RunAsync();
             Assert(!result.Succeeded && result.Steps.Last().AcceptanceDecision == AcceptanceDecision.Inconclusive);
-            Assert(client.Prompts[1].Contains("SPEC-002"));
+            Assert(result.Steps.Count == 4 && result.Steps.Last().InconclusiveCount == 3);
+            Assert(client.Prompts.Skip(1).All(prompt => prompt.Contains("SPEC-002")));
         });
         await Check("malformed data is an execution error rather than an acceptance failure", async () =>
         {
@@ -244,6 +334,7 @@ internal static class AcceptanceStepChecks
                 new("Review", "[review:A]") { RetryStep = "Missing" },
                 new("Review", "[review:A]") { RetryStep = "" },
                 new("Review", "[review:A]") { RetryStep = "Implement", MaxFailures = 0 },
+                new("Review", "[review:A]") { RetryStep = "Implement", MaxInconclusiveRetries = -1 },
                 new("Review", "[review:A]") { RetryStep = "Implement", FailureSeverity = (FindingSeverity)99 },
                 new("Review", "[review:A]") { RetryStep = "Implement", NextStep = _ => "Implement" },
                 new("Review", "[review:A]") { RetryStep = "Implement", DataSchema = null },
