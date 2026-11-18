@@ -5,6 +5,10 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
     private readonly object _sync = new();
     private AppServerWorkflowProgress? _waiting;
     private object? _waitingLineKey;
+    private bool _terminalNotified;
+
+    /// <summary>流程完成、停止、失敗或取消時通知一次；等待刷新與一般步驟完成不通知。</summary>
+    public bool EnableNotifications { get; init; } = true;
 
     /// <summary>
     /// 將 Workflow 進度輸出至主控台。
@@ -16,6 +20,20 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         lock (_sync)
         {
             ReportCore(progress);
+            if (!progress.IsHeartbeat)
+            {
+                if (progress.Status == AppServerWorkflowStatus.Starting)
+                {
+                    _terminalNotified = false;
+                }
+                if (EnableNotifications && !_terminalNotified && progress.Status is
+                    AppServerWorkflowStatus.Completed or AppServerWorkflowStatus.Stopped or
+                    AppServerWorkflowStatus.Faulted or AppServerWorkflowStatus.Cancelled)
+                {
+                    _terminalNotified = true;
+                    ConsoleWorkflowNotifier.Notify();
+                }
+            }
         }
     }
 

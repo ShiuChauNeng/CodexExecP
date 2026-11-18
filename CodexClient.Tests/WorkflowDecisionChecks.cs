@@ -209,7 +209,7 @@ internal static class WorkflowDecisionChecks
             {
                 Console.SetIn(new StringReader("  RAW  \ninvalid\n 2 \n"));
                 Console.SetOut(output);
-                var handler = new ConsoleWorkflowInputHandler();
+                var handler = new ConsoleWorkflowInputHandler { EnableNotifications = false };
                 var request = new AppServerWorkflowInputRequest("Writer", "thread", "turn", "message", ["question"]);
                 var ordinary = await handler.AnswerAsync(request);
                 var confirmed = await handler.AnswerAsync(request with { IsDecisionConfirmation = true, DecisionGroup = "FeatureA" });

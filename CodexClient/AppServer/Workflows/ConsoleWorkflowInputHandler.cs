@@ -2,6 +2,9 @@ namespace CodexClient.AppServer.Workflows;
 
 public sealed class ConsoleWorkflowInputHandler
 {
+    /// <summary>每批 AI 問答或需求決策確認提醒一次；無效輸入重問不重複通知。</summary>
+    public bool EnableNotifications { get; init; } = true;
+
     /// <summary>
     /// 在主控台逐題取得 Workflow 所需的使用者回答。
     /// </summary>
@@ -21,6 +24,10 @@ public sealed class ConsoleWorkflowInputHandler
         {
             ConsoleWorkflowOutput.WriteLine($"[{request.StepName}] 請回答以下問題：", ConsoleColor.Magenta);
             ConsoleWorkflowOutput.WriteLine(request.Message);
+        }
+        if (EnableNotifications && request.Questions.Count > 0)
+        {
+            ConsoleWorkflowNotifier.Notify();
         }
         var answers = new List<string>();
         foreach (string question in request.Questions)

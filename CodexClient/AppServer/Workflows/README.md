@@ -147,6 +147,16 @@ var acceptance = new AppServerAcceptanceStep("Acceptance", "依原始 Spec 與�
 - 確認包含在該輪 `InputTimeout`／整體 `Timeout` 內；`ExecutionTimeout` 仍暫停，`MaxInputRounds` 只計算 AI 提問輪次，不增加確認輪次。
 - 群組設定只控制自動附加的內容，不會抹除共用 thread 的對話歷史；若需要對話隔離，應使用不同 thread。
 
+## Console 事件通知
+
+Console 問答介面預設在每批問題與每次需求決策確認時提醒一次，無效輸入重問不再次提醒。
+Console 進度介面只在 Workflow 完成、停止、失敗或取消時通知一次；一般步驟完成、驗收重試與等待刷新不通知。
+
+- 傳統 Windows Console 不在前景時，使用 FlashWindowEx 閃爍工作列；回到前景後停止，不搶焦點。
+- 不發出音效或 BEL。Windows Terminal 的 pseudoconsole 無法以目前方式取得可見視窗，因此不通知；其他不支援的終端機也靜默略過。
+- 不自動修改終端機設定；輸出導向檔案或非互動環境時不通知，通知失敗也不影響執行結果。
+- 可分別設定 `new ConsoleWorkflowProgressReporter { EnableNotifications = false }` 與 `new ConsoleWorkflowInputHandler { EnableNotifications = false }` 關閉通知。
+
 ## 診斷紀錄
 
 `stepResult.Diagnostics` 保留每個 turn 的原始 `item/completed` 與 `error` 事件，

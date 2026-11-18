@@ -29,7 +29,7 @@ internal static class ConsoleProgressChecks
             string output = await outputTask;
             string error = await errorTask;
             var lines = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
-            if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(error) || output.Contains('\u001b') ||
+            if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(error) || output.Contains('\u001b') || output.Contains('\a') ||
                 output.Replace("\r\n", "\n").Contains('\r') || output.Contains("仍在等待") ||
                 lines.Count(line => line.Contains("[Spec] 等待 AI 執行結果")) != 4 ||
                 !lines.Any(line => line.Contains("累計 3 秒")) ||
