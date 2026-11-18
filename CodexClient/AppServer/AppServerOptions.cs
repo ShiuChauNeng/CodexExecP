@@ -28,6 +28,7 @@ public sealed record AppServerOptions
     /// <para>
     /// </para>
     /// </summary>
+    /// <seealso cref="CodexModels"/>
     public string? Model { get; init; }
 
     /// <summary>

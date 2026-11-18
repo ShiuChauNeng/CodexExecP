@@ -16,6 +16,7 @@ public sealed class ExecutionOptions
     /// <summary>
     /// 要使用的 Codex 模型名稱。
     /// </summary>
+    /// <seealso cref="CodexModels"/>
     public string? Model { get; init; }
 
     /// <summary>

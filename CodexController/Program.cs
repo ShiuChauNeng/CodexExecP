@@ -160,7 +160,7 @@ try
         .Add(new AppServerWorkflowStep(
             "Implement",
             "首次執行時，於 GOGO.txt 寫入 1+1=3，作為驗收測試資料。" +
-"若收到前次驗收失敗的問題與證據，請修正 GOGO.txt 中的算術錯誤。", CodexSandboxMode.WorkspaceWrite))
+"若收到前次驗收失敗的問題與證據，請修正 GOGO.txt 中的算術錯誤。", CodexSandboxMode.WorkspaceWrite, CodexModels.Gpt61Sol))
         .Add(new AppServerAcceptanceStep(
             "Acceptance",
             "讀取 GOGO.txt，檢查其中算術是否正確。" +

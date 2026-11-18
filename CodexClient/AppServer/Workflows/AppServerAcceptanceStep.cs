@@ -43,8 +43,9 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
     /// <param name="name">步驟名稱。</param>
     /// <param name="prompt">要執行的提示文字。</param>
     /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
-    public AppServerAcceptanceStep(string name, string prompt, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
-        : base(name, prompt, sandbox)
+    /// <param name="model">模型 ID；未指定時沿用 Codex 設定。</param>
+    public AppServerAcceptanceStep(string name, string prompt, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly, string? model = null)
+        : base(name, prompt, sandbox, model)
     {
         DataSchema = AcceptanceResultSchema.Value;
         StopOnIssues = false;
@@ -56,8 +57,9 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
     /// <param name="name">步驟名稱。</param>
     /// <param name="promptFactory">產生提示文字的委派。</param>
     /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
-    public AppServerAcceptanceStep(string name, Func<AppServerWorkflowContext, string> promptFactory, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
-        : base(name, promptFactory, sandbox)
+    /// <param name="model">模型 ID；未指定時沿用 Codex 設定。</param>
+    public AppServerAcceptanceStep(string name, Func<AppServerWorkflowContext, string> promptFactory, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly, string? model = null)
+        : base(name, promptFactory, sandbox, model)
     {
         DataSchema = AcceptanceResultSchema.Value;
         StopOnIssues = false;

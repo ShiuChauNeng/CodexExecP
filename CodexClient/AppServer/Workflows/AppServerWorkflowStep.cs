@@ -33,7 +33,7 @@ public class AppServerWorkflowStep
     public AppServerThread Thread { get; init; } = AppServerThread.PerStep;
 
     /// <summary>
-    /// 取得或設定此步驟使用的 App Server 執行選項；指定時會取代建構式建立的選項（包含沙箱模式）。
+    /// 取得或設定此步驟使用的 App Server 執行選項；指定時會取代建構式建立的選項（包含沙箱模式與模型）。
     /// </summary>
     public AppServerOptions Options { get; init; } = new();
 
@@ -74,33 +74,35 @@ public class AppServerWorkflowStep
 
     // Constructors
     /// <summary>
-    /// 以固定提示文字與沙箱模式建立步驟。
+    /// 以固定提示文字、沙箱模式與模型建立步驟。
     /// </summary>
     /// <param name="name">步驟名稱。</param>
     /// <param name="prompt">要執行的提示文字。</param>
     /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
-    public AppServerWorkflowStep(string name, string prompt, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
+    /// <param name="model">模型 ID；未指定時沿用 Codex 設定。</param>
+    public AppServerWorkflowStep(string name, string prompt, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly, string? model = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
 
         (Name, Prompt) = (name, prompt);
-        Options = new AppServerOptions { Sandbox = sandbox };
+        Options = new AppServerOptions { Sandbox = sandbox, Model = model };
     }
 
     /// <summary>
-    /// 以提示產生器與沙箱模式建立步驟。
+    /// 以提示產生器、沙箱模式與模型建立步驟。
     /// </summary>
     /// <param name="name">步驟名稱。</param>
     /// <param name="promptFactory">產生提示文字的委派。</param>
     /// <param name="sandbox">沙箱模式；預設為唯讀。</param>
-    public AppServerWorkflowStep(string name, Func<AppServerWorkflowContext, string> promptFactory, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
+    /// <param name="model">模型 ID；未指定時沿用 Codex 設定。</param>
+    public AppServerWorkflowStep(string name, Func<AppServerWorkflowContext, string> promptFactory, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly, string? model = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(promptFactory);
 
         (Name, PromptFactory) = (name, promptFactory);
-        Options = new AppServerOptions { Sandbox = sandbox };
+        Options = new AppServerOptions { Sandbox = sandbox, Model = model };
     }
 
 
