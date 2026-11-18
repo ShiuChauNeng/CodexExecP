@@ -34,7 +34,8 @@ if (args.Contains("--acceptance-only"))
     int acceptanceCount = await AcceptanceChecks.RunAsync(acceptanceWorkspace);
     acceptanceCount += await WorkflowRoutingChecks.RunAsync(acceptanceWorkspace);
     acceptanceCount += await AcceptanceStepChecks.RunAsync(acceptanceWorkspace);
-    Console.WriteLine($"Passed {acceptanceCount} acceptance and routing checks.");
+    acceptanceCount += await WorkflowDecisionChecks.RunAsync(acceptanceWorkspace);
+    Console.WriteLine($"Passed {acceptanceCount} acceptance, routing and decision checks.");
     return;
 }
 
@@ -176,6 +177,7 @@ passed += await ReasoningEffortChecks.RunAsync(workspace);
 passed += await AcceptanceChecks.RunAsync(workspace);
 passed += await WorkflowRoutingChecks.RunAsync(workspace);
 passed += await AcceptanceStepChecks.RunAsync(workspace);
+passed += await WorkflowDecisionChecks.RunAsync(workspace);
 Console.WriteLine($"Passed {passed} checks.");
 
 AppServerWorkflow Workflow(IAppServerClient client,

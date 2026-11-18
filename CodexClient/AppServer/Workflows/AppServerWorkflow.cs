@@ -291,6 +291,7 @@ public sealed class AppServerWorkflow
         CancellationToken token = budget.Token;
         int inputRounds = 0;
         var diagnostics = new List<AppServerTurnDiagnostics>();
+        var decisions = new List<AppServerWorkflowDecision>();
         AppServerTurnDiagnostics? previousDiagnostics = _client.LastTurnDiagnostics;
         try
         {
@@ -305,6 +306,13 @@ public sealed class AppServerWorkflow
             bool resumeForRevision = acceptanceFeedback?.AcceptanceDecision == AcceptanceDecision.NeedsRevision && threadId is not null &&
                 results.Any(result => result.Name == step.Name && result.ThreadId == threadId);
             string prompt = resumeForRevision ? "" : step.CreatePrompt(CreateContext(results, threads));
+            var relevantDecisions = results.SelectMany(result => result.Decisions)
+                .Where(decision => step.ReadDecisionsFrom.Contains(decision.Group, StringComparer.Ordinal)).ToArray();
+            if (relevantDecisions.Length > 0)
+            {
+                prompt += "\n\n以下是使用者已確認的需求補充或變更，僅修訂其對應事項，其餘仍以原始規格為準。" +
+                    "若決策彼此衝突或含義不明，請提問確認，不可自行擴大變更範圍：\n" + JsonSerializer.Serialize(relevantDecisions);
+            }
             if (acceptanceFeedback is not null)
             {
                 if (!string.IsNullOrEmpty(prompt))
@@ -352,7 +360,7 @@ public sealed class AppServerWorkflow
                     }
                     try
                     {
-                        var answers = await AnswerQuestionsAsync(step.Name, request, progress, inputCancellation.Token).WaitAsync(inputCancellation.Token);
+                        var answers = await AnswerQuestionsAsync(step, request, progress, decisions, inputCancellation.Token).WaitAsync(inputCancellation.Token);
                         inputCancellation.Token.ThrowIfCancellationRequested();
                         budget.Resume();
                         return answers;
@@ -408,6 +416,7 @@ public sealed class AppServerWorkflow
         return new(step.Name, threadId, execution, error)
         {
             Diagnostics = Array.AsReadOnly(diagnostics.ToArray()),
+            Decisions = Array.AsReadOnly(decisions.ToArray()),
             AcceptanceDecision = acceptanceDecision
         };
     }
@@ -426,21 +435,57 @@ public sealed class AppServerWorkflow
     /// <summary>
     /// 暫停執行並取得使用者對模型問題的回答。
     /// </summary>
+    /// <param name="step">提出問題的步驟及其決策群組設定。</param>
     /// <param name="request">使用者輸入要求。</param>
+    /// <param name="progress">Workflow 進度。</param>
+    /// <param name="decisions">此步驟已確認的需求決策。</param>
     /// <param name="cancellationToken">用於取消等待輸入的權杖。</param>
     /// <returns>非同步回傳使用者回答。</returns>
-    private async Task<IReadOnlyList<string>> AnswerQuestionsAsync(string stepName, TaskInputRequest request, WorkflowProgressScope progress, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> AnswerQuestionsAsync(AppServerWorkflowStep step, TaskInputRequest request,
+        WorkflowProgressScope progress, List<AppServerWorkflowDecision> decisions, CancellationToken cancellationToken)
     {
-        progress.Update(AppServerWorkflowStatus.WaitingForInput, $"等待使用者回答，共 {request.Questions.Count} 個問題。", stepName, request.ThreadId);
+        progress.Update(AppServerWorkflowStatus.WaitingForInput, $"等待使用者回答，共 {request.Questions.Count} 個問題。", step.Name, request.ThreadId);
 
-        // TaskRunner 已負責取消這次等待，這裡只轉接輸入介面與狀態提示。
-        var answers = await _answerQuestionsAsync(new(stepName, request.ThreadId, request.TurnId, request.Message, request.Questions), cancellationToken);
+        // 原始問答與決策確認共用輸入時限；只有明確確認的原始問答才記錄。
+        var answers = await _answerQuestionsAsync(new(step.Name, request.ThreadId, request.TurnId, request.Message, request.Questions), cancellationToken).WaitAsync(cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
+        if (answers is null || answers.Count != request.Questions.Count || answers.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException("Provide one nonempty answer for each question.");
+        }
+        var answerSnapshot = answers.ToArray();
+        if (step.RecordDecisionsTo is { } group)
+        {
+            for (int index = 0; index < request.Questions.Count; index++)
+            {
+                string confirmationQuestion = request.Questions.Count > 1
+                    ? $"是否將第 {index + 1} 題的回答記錄為需求補充或變更？"
+                    : "是否記錄為需求補充或變更？";
+                var confirmation = new AppServerWorkflowInputRequest(step.Name, request.ThreadId, request.TurnId,
+                    $"確認第 {index + 1}/{request.Questions.Count} 題的回答。",
+                    [$"{confirmationQuestion}\n1 不記錄　2 記錄"])
+                {
+                    IsDecisionConfirmation = true,
+                    DecisionGroup = group
+                };
+                var choice = await _answerQuestionsAsync(confirmation, cancellationToken).WaitAsync(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (choice is null || choice.Count != 1 || choice[0] is not ("1" or "2"))
+                {
+                    throw new ArgumentException("Decision confirmation requires one answer: 1 (skip) or 2 (record).");
+                }
+                if (choice[0] == "2")
+                {
+                    decisions.Add(new(group, step.Name, request.ThreadId, request.TurnId,
+                        request.Message, request.Questions[index], answerSnapshot[index], DateTimeOffset.UtcNow));
+                }
+            }
+        }
 
-        progress.Update(AppServerWorkflowStatus.Running, "已收到回答，繼續等待 AI 執行結果。", stepName, request.ThreadId);
+        progress.Update(AppServerWorkflowStatus.Running, "已收到回答，繼續等待 AI 執行結果。", step.Name, request.ThreadId);
 
-        return answers;
+        return Array.AsReadOnly(answerSnapshot);
     }
 
     /// <summary>
@@ -539,6 +584,7 @@ public sealed class AppServerWorkflow
         // 回傳後這次執行不再變更 threads，唯讀包裝即可，不需再複製。
         => new(succeeded, failedStep, Array.AsReadOnly(results.ToArray()), new ReadOnlyDictionary<string, string>(threads))
         {
-            Error = error
+            Error = error,
+            Decisions = Array.AsReadOnly(results.SelectMany(result => result.Decisions).ToArray())
         };
 }

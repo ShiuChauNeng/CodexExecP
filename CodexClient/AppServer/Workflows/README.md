@@ -123,6 +123,30 @@ Workflow 會逐步傳遞選項；App Server 即使共用 thread，下一步仍�
 重要產出應提供 `ValidateCompletionAsync`，實際檢查檔案、建置或業務條件。
 未設定驗證時，`Completed` 仍只是接受 AI 回報的完成狀態。
 
+## 問答中的需求決策
+
+```csharp
+var implement = new AppServerWorkflowStep("Implement", "使用實作 Skill")
+{
+    RecordDecisionsTo = "FeatureA",
+    ReadDecisionsFrom = ["FeatureA"]
+};
+var acceptance = new AppServerAcceptanceStep("Acceptance", "依原始 Spec 與已確認決策驗收")
+{
+    ReadDecisionsFrom = ["FeatureA"],
+    RetryStep = "Implement"
+};
+```
+
+- `RecordDecisionsTo` 未設定時維持原有問答，不額外詢問。設定後，每個回答都會再確認一次：1 不記錄，2 明確確認為需求補充或變更。
+- C# 保留原始說明、問題、回答、來源步驟、thread、turn 與確認時間，不由 AI 摘要或自行判定為變更，也不直接修改 Spec。
+- `ReadDecisionsFrom` 支援多個群組，區分大小寫；執行前附加該群組本次 Run 的已確認紀錄，重跑與驗收補查也取得最新紀錄。
+- 紀錄只修訂其對應事項；相互衝突或語意不明時，模型應提問確認，不自動採用「最後一筆覆蓋全部規格」。
+- `result.Decisions` 與 `stepResult.Decisions` 提供已確認紀錄快照，失敗步驟中已確認的紀錄也會保留。下一次 Run 重設，不自動寫檔或跨次恢復。
+- 確認仍使用既有的回答委派，`request.IsDecisionConfirmation` 為 true 時，`DecisionGroup` 指出群組，必須回傳單一答案 `"1"` 或 `"2"`。自訂介面應向使用者確認，不能自動沿用原回答。Console handler 已提供選擇與無效輸入重問。
+- 確認包含在該輪 `InputTimeout`／整體 `Timeout` 內；`ExecutionTimeout` 仍暫停，`MaxInputRounds` 只計算 AI 提問輪次，不增加確認輪次。
+- 群組設定只控制自動附加的內容，不會抹除共用 thread 的對話歷史；若需要對話隔離，應使用不同 thread。
+
 ## 診斷紀錄
 
 `stepResult.Diagnostics` 保留每個 turn 的原始 `item/completed` 與 `error` 事件，

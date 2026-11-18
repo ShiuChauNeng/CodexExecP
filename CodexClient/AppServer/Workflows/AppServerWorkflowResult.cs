@@ -13,4 +13,7 @@ public sealed record AppServerWorkflowResult(
     /// 流程控制或步驟錯誤；因 StopOnIssues 或無法完成驗收而停止時可為 null。
     /// </summary>
     public Exception? Error { get; init; }
+
+    /// <summary>本次執行已確認的需求決策快照，包含重跑或失敗步驟中已確認的紀錄。</summary>
+    public IReadOnlyList<AppServerWorkflowDecision> Decisions { get; init; } = [];
 }

@@ -28,6 +28,16 @@ public class AppServerWorkflowStep
     public Func<AppServerWorkflowContext, string?>? NextStep { get; init; }
 
     /// <summary>
+    /// 將明確確認為需求補充或變更的問答記錄到此群組；null 表示不詢問是否記錄。
+    /// </summary>
+    public string? RecordDecisionsTo { get; init; }
+
+    /// <summary>
+    /// 執行前附加這些群組的已確認決策；群組區分大小寫，未設定時不自動附加。
+    /// </summary>
+    public IReadOnlyList<string> ReadDecisionsFrom { get; init; } = [];
+
+    /// <summary>
     /// 取得或設定此步驟使用 App Server thread 的方式；預設於本次 Workflow 內重用步驟專屬 thread。
     /// </summary>
     public AppServerThread Thread { get; init; } = AppServerThread.PerStep;
@@ -127,6 +137,16 @@ public class AppServerWorkflowStep
     {
         ArgumentNullException.ThrowIfNull(Thread);
         ArgumentNullException.ThrowIfNull(Options);
+        if (RecordDecisionsTo is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(RecordDecisionsTo);
+        }
+        ArgumentNullException.ThrowIfNull(ReadDecisionsFrom);
+        if (ReadDecisionsFrom.Any(string.IsNullOrWhiteSpace) ||
+            ReadDecisionsFrom.Distinct(StringComparer.Ordinal).Count() != ReadDecisionsFrom.Count)
+        {
+            throw new ArgumentException("Decision groups must be nonempty and unique.", nameof(ReadDecisionsFrom));
+        }
 
         (Options with { WorkspaceRoot = workspaceRoot }).Validate();
 

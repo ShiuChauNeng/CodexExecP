@@ -13,4 +13,13 @@ public sealed record AppServerWorkflowInputRequest(
     string ThreadId,
     string TurnId,
     string Message,
-    IReadOnlyList<string> Questions);
+    IReadOnlyList<string> Questions)
+{
+    /// <summary>
+    /// 是否為需求決策確認；為 true 時只有一個問題，回答 "1" 不記錄、"2" 明確確認記錄。
+    /// </summary>
+    public bool IsDecisionConfirmation { get; init; }
+
+    /// <summary>確認時要記錄的決策群組；一般問答為 null。</summary>
+    public string? DecisionGroup { get; init; }
+}

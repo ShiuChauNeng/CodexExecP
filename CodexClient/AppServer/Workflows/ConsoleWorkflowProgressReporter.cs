@@ -20,7 +20,7 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         ConsoleColor? color = progress.IsHeartbeat ? ConsoleColor.DarkGray : progress.Status switch
         {
             AppServerWorkflowStatus.Running => ConsoleColor.DarkGray,
-            AppServerWorkflowStatus.WaitingForInput => ConsoleColor.Cyan,
+            AppServerWorkflowStatus.WaitingForInput => ConsoleColor.Magenta,
             AppServerWorkflowStatus.StepCompleted or AppServerWorkflowStatus.Completed => ConsoleColor.Green,
             AppServerWorkflowStatus.StepFailed or AppServerWorkflowStatus.Stopped or AppServerWorkflowStatus.Faulted => ConsoleColor.Red,
             _ => null

@@ -16,6 +16,9 @@ internal static class ConsoleWorkflowOutput
     internal static void WriteOrangeLine(string text)
         => WriteCore(() => Console.WriteLine(text), ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
 
+    internal static void WriteOrange(string text)
+        => WriteCore(() => Console.Write(text), ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
+
     private static void WriteCore(Action write, ConsoleColor? color, string? ansiColor = null)
     {
         lock (Sync)

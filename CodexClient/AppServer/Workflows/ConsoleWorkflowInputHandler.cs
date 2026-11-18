@@ -13,20 +13,47 @@ public sealed class ConsoleWorkflowInputHandler
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        ConsoleWorkflowOutput.WriteLine($"[{request.StepName}] 請回答以下問題：", ConsoleColor.Cyan);
-        ConsoleWorkflowOutput.WriteLine(request.Message);
+        if (request.IsDecisionConfirmation)
+        {
+            ConsoleWorkflowOutput.WriteLine("");
+        }
+        else
+        {
+            ConsoleWorkflowOutput.WriteLine($"[{request.StepName}] 請回答以下問題：", ConsoleColor.Magenta);
+            ConsoleWorkflowOutput.WriteLine(request.Message);
+        }
         var answers = new List<string>();
         foreach (string question in request.Questions)
         {
-            ConsoleWorkflowOutput.WriteLine(question);
+            if (request.IsDecisionConfirmation)
+            {
+                var lines = question.Split('\n', 2);
+                ConsoleWorkflowOutput.WriteLine(lines[0].TrimEnd('\r'), ConsoleColor.Magenta);
+                if (lines.Length > 1)
+                {
+                    ConsoleWorkflowOutput.WriteLine(lines[1]);
+                }
+            }
+            else
+            {
+                ConsoleWorkflowOutput.WriteLine(question);
+            }
             string answer;
             do
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ConsoleWorkflowOutput.Write("請輸入答案：", ConsoleColor.Cyan);
                 answer = await Console.In.ReadLineAsync(cancellationToken) ?? throw new OperationCanceledException("使用者輸入已結束。");
+                if (request.IsDecisionConfirmation)
+                {
+                    answer = answer.Trim();
+                    if (answer is not ("1" or "2"))
+                    {
+                        ConsoleWorkflowOutput.WriteLine("請輸入 1（不記錄）或 2（確認記錄）。", ConsoleColor.Magenta);
+                    }
+                }
             }
-            while (string.IsNullOrWhiteSpace(answer));
+            while (string.IsNullOrWhiteSpace(answer) || request.IsDecisionConfirmation && answer is not ("1" or "2"));
 
             cancellationToken.ThrowIfCancellationRequested();
             answers.Add(answer);
