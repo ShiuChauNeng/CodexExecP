@@ -171,6 +171,7 @@ try
         {
             Options = writeOptions,
             FailureSeverity = FindingSeverity.Error,
+            MaxInconclusiveRetries = 2,
             MaxFailures = 3,
             RetryStep = "Implement"
         })
@@ -183,8 +184,10 @@ try
 
     var result = await workflow.RunAsync();
 
-    Console.WriteLine($"流程成功：{result.Succeeded}");
 
+
+    Console.WriteLine("==========================================");
+    Console.WriteLine($"流程成功：{result.Succeeded}");
     foreach (var step in result.Steps)
     {
         Console.WriteLine(

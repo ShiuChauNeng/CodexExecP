@@ -29,7 +29,9 @@ workflow.Add(implementStep).Add(acceptance).Add(styleStep);
 - 各驗收 Step 在同一次 Run 中獨立累計失敗次數，通過不清零；每次 RunAsync 重新計算。
 - `RequiredCriterionIds` 是選填的必要項目清單，用來發現漏查。清單會自動加入驗收 Prompt。
   清單外的 NotEvaluated 保留為限制，不阻擋流程；已證實的 Failed 或達到失敗等級的問題仍會返回修正。
-  未提供時將 Skill 回報的所有 Checks 視為必要，無法知道它是否遺漏 Spec 中的項目。
+  未提供時，在同次 Run 內累積各輪回報的 Check ID 作為必要清單，補查或修正後不能漏報；各驗收步驟獨立保存，下次 Run 重設。
+  每輪 Prompt 會附上已知的必要清單，並要求重新提供當輪狀態與證據，不沿用之前的 Passed。
+  仍無法發現從第一輪起就未回報的 Spec 項目；需完整性保證時請明確提供 RequiredCriterionIds。
 
 驗收 Step 自動使用 AcceptanceResultSchema，依驗收資料判斷：
 

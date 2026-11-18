@@ -116,6 +116,8 @@ public sealed class AppServerWorkflow
             var threads = new Dictionary<string, string>(StringComparer.Ordinal);
             var failures = new Dictionary<string, int>(StringComparer.Ordinal);
             var inconclusiveCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            var knownCriteria = steps.OfType<AppServerAcceptanceStep>().ToDictionary(step => step.Name,
+                _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
             var indices = steps.Select((step, index) => (step.Name, index)).ToDictionary(pair => pair.Name, pair => pair.index, StringComparer.Ordinal);
 
             int nextIndex = 0;
@@ -125,7 +127,8 @@ public sealed class AppServerWorkflow
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var step = steps[nextIndex];
-                AppServerWorkflowStepResult result = await ExecuteStepAsync(step, results, threads, progress, cancellationToken, retryFeedback);
+                AppServerWorkflowStepResult result = await ExecuteStepAsync(step, results, threads, progress, cancellationToken,
+                    knownCriteria.GetValueOrDefault(step.Name), retryFeedback);
                 retryFeedback = null;
                 bool taskAccepted = result.Completed && (!step.StopOnIssues || !result.HasIssues);
                 int failureCount = failures.GetValueOrDefault(step.Name);
@@ -261,6 +264,7 @@ public sealed class AppServerWorkflow
     /// <param name="threads">目前已建立的 thread 對應表。</param>
     /// <param name="progress">Workflow 進度範圍。</param>
     /// <param name="cancellationToken">用於取消步驟的權杖。</param>
+    /// <param name="knownCriterionIds">本次 Run 中該驗收步驟累積的項目 ID；一般步驟為 null。</param>
     /// <param name="acceptanceFeedback">前次驗收提供給修正或補查步驟的回饋。</param>
     /// <returns>非同步回傳步驟執行結果。</returns>
     private async Task<AppServerWorkflowStepResult> ExecuteStepAsync(
@@ -269,6 +273,7 @@ public sealed class AppServerWorkflow
         Dictionary<string, string> threads,
         WorkflowProgressScope progress,
         CancellationToken cancellationToken,
+        HashSet<string>? knownCriterionIds,
         AppServerWorkflowStepResult? acceptanceFeedback = null)
     {
         string? threadId = null;
@@ -319,6 +324,10 @@ public sealed class AppServerWorkflow
                         acceptance = acceptanceFeedback.Execution!.Data
                     });
             }
+            if (step is AppServerAcceptanceStep acceptanceForPrompt)
+            {
+                prompt = acceptanceForPrompt.AppendRequiredCriteria(prompt, knownCriterionIds!);
+            }
             ArgumentException.ThrowIfNullOrWhiteSpace(prompt);
 
             progress.Update(AppServerWorkflowStatus.CreatingThread, threadId is not null ? "準備使用既有 thread。" : "正在建立 thread。", step.Name, threadId);
@@ -356,7 +365,7 @@ public sealed class AppServerWorkflow
 
             if (step is AppServerAcceptanceStep acceptance)
             {
-                acceptanceDecision = acceptance.Evaluate(execution);
+                acceptanceDecision = acceptance.Evaluate(execution, knownCriterionIds!);
             }
 
             if (step.ValidateCompletionAsync is not null)

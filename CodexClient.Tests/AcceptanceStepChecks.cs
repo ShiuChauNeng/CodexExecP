@@ -208,6 +208,88 @@ internal static class AcceptanceStepChecks
             var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
             Assert(!result.Succeeded && result.Steps.Last().InconclusiveCount == 3);
         });
+        await Check("rechecks cannot drop previously reported unevaluated criteria", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => count == 1
+                ? Result() with { Checks = [.. Result().Checks,
+                    new("SPEC-002", AcceptanceCheckStatus.NotEvaluated, "Missing evidence")] }
+                : Result() };
+            var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
+            Assert(!result.Succeeded && result.Steps.Count == 4 && result.Steps.Last().InconclusiveCount == 3);
+            Assert(result.Steps.Skip(1).All(step => step.AcceptanceDecision == AcceptanceDecision.Inconclusive && step.FailureCount == 0));
+            Assert(client.Prompts[3].Contains("必要驗收項目 ID：") && client.Prompts[3].Contains("SPEC-002"));
+        });
+        await Check("product revisions retain both passed and failed criterion IDs without reusing their statuses", async () =>
+        {
+            foreach (string omittedId in new[] { "SPEC-001", "SPEC-002" })
+            {
+                var client = new Client { Assessment = (_, count) => Result() with
+                {
+                    Checks = count == 1
+                        ? [new("SPEC-001", AcceptanceCheckStatus.Passed, "Passed evidence"),
+                            new("SPEC-002", AcceptanceCheckStatus.Failed, "Defect evidence")]
+                        : count == 2
+                            ? [new(omittedId == "SPEC-001" ? "SPEC-002" : "SPEC-001", AcceptanceCheckStatus.Passed, "Current evidence")]
+                            : [new("SPEC-001", AcceptanceCheckStatus.Passed, "Current evidence"),
+                                new("SPEC-002", AcceptanceCheckStatus.Passed, "Current evidence")]
+                } };
+                var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
+                Assert(result.Succeeded && result.Steps.Select(step => step.Name).SequenceEqual(["Implement", "Review", "Implement", "Review", "Review"]));
+                Assert(result.Steps[3].AcceptanceDecision == AcceptanceDecision.Inconclusive);
+                Assert(result.Steps.Last().FailureCount == 1 && result.Steps.Last().InconclusiveCount == 1);
+            }
+        });
+        await Check("new criteria discovered during rechecks remain necessary on subsequent rechecks", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => Result() with
+            {
+                Checks = count switch
+                {
+                    1 => [new("SPEC-001", AcceptanceCheckStatus.NotEvaluated, "Missing evidence")],
+                    2 => [.. Result().Checks, new("SPEC-002", AcceptanceCheckStatus.NotEvaluated, "New check")],
+                    3 => Result().Checks,
+                    _ => [.. Result().Checks, new("SPEC-002", AcceptanceCheckStatus.Passed, "Current evidence")]
+                }
+            } };
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]") { RetryStep = "Implement", MaxInconclusiveRetries = 3 }).RunAsync();
+            Assert(result.Succeeded && result.Steps.Count == 5 && result.Steps.Last().InconclusiveCount == 3);
+            Assert(result.Steps[3].AcceptanceDecision == AcceptanceDecision.Inconclusive && client.Prompts[4].Contains("SPEC-002"));
+        });
+        await Check("explicit required lists do not promote optional criteria observed before a recheck", async () =>
+        {
+            var client = new Client { Assessment = (_, count) => count == 1
+                ? Result() with { Checks = [new("SPEC-001", AcceptanceCheckStatus.NotEvaluated, "Missing evidence"),
+                    new("OPTIONAL-001", AcceptanceCheckStatus.NotEvaluated, "Optional limitation")] }
+                : Result() };
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]") { RetryStep = "Implement", RequiredCriterionIds = ["SPEC-001"] }).RunAsync();
+            Assert(result.Succeeded && result.Steps.Count == 3 && result.Steps.Last().InconclusiveCount == 1);
+        });
+        await Check("inferred criterion lists are independent per step and reset between runs", async () =>
+        {
+            var client = new Client { Assessment = (name, count) => Result() with
+                { Checks = [new($"{name}-{count}", AcceptanceCheckStatus.Passed, "Current evidence")] } };
+            var workflow = Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("ReviewA", "[review:A]") { RetryStep = "Implement" })
+                .Add(new AppServerAcceptanceStep("ReviewB", "[review:B]") { RetryStep = "Implement" });
+            var first = await workflow.RunAsync();
+            var second = await workflow.RunAsync();
+            Assert(first.Succeeded && second.Succeeded && first.Steps.Count == 3 && second.Steps.Count == 3);
+        });
+        await Check("inferred criteria survive a passed assessment when a later assessment returns to implementation", async () =>
+        {
+            var client = new Client { Assessment = (name, count) => name == "B"
+                ? Result(count == 1 ? FindingSeverity.Error : null)
+                : count == 2 ? Result() : Result() with
+                    { Checks = [.. Result().Checks, new("SPEC-002", AcceptanceCheckStatus.Passed, "Current evidence")] } };
+            var result = await Workflow(client).Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("ReviewA", "[review:A]") { RetryStep = "Implement" })
+                .Add(new AppServerAcceptanceStep("ReviewB", "[review:B]") { RetryStep = "Implement" }).RunAsync();
+            Assert(result.Succeeded && result.Steps.Select(step => step.Name)
+                .SequenceEqual(["Implement", "ReviewA", "ReviewB", "Implement", "ReviewA", "ReviewA", "ReviewB"]));
+            Assert(result.Steps[4].AcceptanceDecision == AcceptanceDecision.Inconclusive);
+        });
         await Check("zero rechecks restores immediate stopping", async () =>
         {
             var client = new Client { Assessment = (_, _) => Result() with { Checks = [] } };

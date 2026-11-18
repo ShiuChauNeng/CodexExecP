@@ -33,7 +33,7 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
 
     /// <summary>
     /// 選填的必要項目清單，用來發現 Skill 漏查；清單外的 NotEvaluated 不阻擋流程。
-    /// 未指定時將 Skill 回報的所有項目視為必要，無法發現未回報的項目。
+    /// 未指定時累積本次 Run 歷次回報的項目作為必要清單，無法發現從未回報的項目。
     /// </summary>
     public IReadOnlyList<string> RequiredCriterionIds { get; init; } = [];
 
@@ -76,9 +76,19 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
         prompt += "\n\n驗收正常執行完成時 state=completed；產品缺陷放在 data.findings。" +
             "所有驗收項目均須回報狀態及證據，無法判斷時使用 NotEvaluated，不可自行當成通過。";
 
-        if (RequiredCriterionIds.Count > 0)
+        return prompt;
+    }
+
+    /// <summary>
+    /// 附加明確指定或本次 Run 累積的必要項目，要求當輪重新回報狀態與證據。
+    /// </summary>
+    internal string AppendRequiredCriteria(string prompt, IReadOnlyCollection<string> knownCriterionIds)
+    {
+        IReadOnlyCollection<string> criteria = RequiredCriterionIds.Count > 0 ? RequiredCriterionIds : knownCriterionIds;
+        if (criteria.Count > 0)
         {
-            prompt += "\n必要驗收項目 ID：" + JsonSerializer.Serialize(RequiredCriterionIds);
+            prompt += "\n必要驗收項目 ID：" + JsonSerializer.Serialize(criteria) +
+                "\n請逐項回報本輪狀態與證據，不可省略，也不可沿用前輪的通過狀態。";
         }
         return prompt;
     }
@@ -88,15 +98,18 @@ public sealed class AppServerAcceptanceStep : AppServerWorkflowStep
     /// </summary>
     /// <param name="execution">要評估的任務結果。</param>
     /// <returns>驗收決策。</returns>
-    internal AcceptanceDecision Evaluate(TaskRunResult execution)
+    internal AcceptanceDecision Evaluate(TaskRunResult execution, HashSet<string> knownCriterionIds)
     {
         var result = execution.Data!.Value.Deserialize<AcceptanceResult>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
             ?? throw new JsonException("Acceptance data is missing.");
 
         result.Validate();
 
-        IReadOnlyCollection<string> criteria = RequiredCriterionIds.Count > 0
-            ? RequiredCriterionIds : result.Checks.Select(check => check.CriterionId).ToArray();
+        if (RequiredCriterionIds.Count == 0)
+        {
+            knownCriterionIds.UnionWith(result.Checks.Select(check => check.CriterionId));
+        }
+        IReadOnlyCollection<string> criteria = RequiredCriterionIds.Count > 0 ? RequiredCriterionIds : knownCriterionIds;
 
         if (criteria.Count == 0)
         {

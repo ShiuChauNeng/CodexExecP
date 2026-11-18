@@ -34,6 +34,8 @@ C# 只驗證資料完整性與決定流程方向，不重新判讀規格是否�
 
 一般使用情境建議直接使用 [AppServerAcceptanceStep](../AppServer/Workflows/README.md)：
 設定 FailureSeverity、MaxFailures、RetryStep 即可自動判斷並返回修正。
+未指定 RequiredCriterionIds 時，Workflow 會在本次 Run 累積該驗收步驟歷次回報的 Check ID，防止補查或修正後漏報已知項目。
+這只保留項目 ID，不沿用先前的通過狀態；仍無法發現從未回報的規格項目。
 `Inconclusive` 預設額外補查驗收步驟最多兩次，不返回實作步驟，也不增加產品失敗次數。
 可用 MaxInconclusiveRetries 調整上限，設為 0 恢復立即停止。補查次數各驗收步驟獨立，於每次 Run 重設。
 以下是以一般 Step 手動處理契約的進階用法。
