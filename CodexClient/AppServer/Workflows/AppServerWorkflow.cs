@@ -27,7 +27,7 @@ public sealed class AppServerWorkflow
     /// <summary>
     /// 等待 AI 或其他執行階段時的狀態提醒間隔；等待使用者輸入期間不輸出定期提醒。
     /// </summary>
-    public TimeSpan ProgressInterval { get; init; } = TimeSpan.FromSeconds(15);
+    public TimeSpan ProgressInterval { get; init; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// 最近一次執行時同步 Report 的錯誤；不影響步驟的執行結果。

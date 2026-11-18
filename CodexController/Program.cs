@@ -156,6 +156,7 @@ try
         Model = CodexModels.Gpt61Sol
     };
     var workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
+   
 
     Console.WriteLine($"測試工作區：{workspaceRoot}");
     Console.WriteLine("本次將建立或覆寫 DecisionDemo.Spec.md、DecisionDemo.Result.txt、DecisionDemo.Acceptance.md。");

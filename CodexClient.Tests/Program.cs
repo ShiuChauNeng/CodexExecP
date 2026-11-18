@@ -22,6 +22,19 @@ if (args.Contains("app-server"))
     return;
 }
 
+if (args.Contains("--demo-progress"))
+{
+    await ConsoleProgressChecks.DemoAsync(args.Contains("--fast"));
+    return;
+}
+
+if (args.Contains("--progress-only"))
+{
+    int progressCount = await ConsoleProgressChecks.RunAsync();
+    Console.WriteLine($"Passed {progressCount} console progress check.");
+    return;
+}
+
 if (args.Contains("--demo-acceptance"))
 {
     await AcceptanceStepDemo.RunAsync(args.Contains("--always-fail"));
@@ -178,6 +191,7 @@ passed += await AcceptanceChecks.RunAsync(workspace);
 passed += await WorkflowRoutingChecks.RunAsync(workspace);
 passed += await AcceptanceStepChecks.RunAsync(workspace);
 passed += await WorkflowDecisionChecks.RunAsync(workspace);
+passed += await ConsoleProgressChecks.RunAsync();
 Console.WriteLine($"Passed {passed} checks.");
 
 AppServerWorkflow Workflow(IAppServerClient client,

@@ -1,5 +1,17 @@
 # Workflow 回歸檢查
 
+觀察等待行刷新與切換到問答的版面，不呼叫真實 AI，回答會自動填入：
+
+```powershell
+dotnet run --project CodexClient.Tests/CodexClient.Tests.csproj --no-restore -- --demo-progress
+```
+
+單獨檢查導向輸出仍保留逐行紀錄，且不包含游標控制碼：
+
+```powershell
+dotnet run --project CodexClient.Tests/CodexClient.Tests.csproj --no-restore -- --progress-only
+```
+
 互動觀察驗收 Step 的執行順序，不需 Skill、API Key 或 Codex 服務，也不修改檔案：
 
 ```powershell

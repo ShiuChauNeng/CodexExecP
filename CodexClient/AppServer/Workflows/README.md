@@ -161,6 +161,11 @@ stderr 是整個連線最近 16384 個字元的快照，截斷時會加上提示
 
 ## 時間與問答限制
 
+`ConsoleWorkflowProgressReporter` 會在同一行更新等待狀態的累計秒數，保留等待開始時的時間與訊息。
+更新頻率由 `ProgressInterval` 決定，例如設為 `TimeSpan.FromSeconds(1)` 每秒刷新。
+其他 Workflow Console 輸出會先結束等待行，避免覆蓋問題或結果；偵測到游標已移動時也不回頭覆寫。
+輸出導向檔案、終端機不支援游標位置，或文字因視窗太窄而換行時，退回逐行輸出。
+
 ```csharp
 var step = new AppServerWorkflowStep("Implement", "實作需求")
 {
