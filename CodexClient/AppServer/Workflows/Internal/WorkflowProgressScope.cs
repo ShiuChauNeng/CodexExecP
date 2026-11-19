@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using CodexClient.Acceptance;
 
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.Internal;
 
 internal sealed class WorkflowProgressScope : IAsyncDisposable
 {

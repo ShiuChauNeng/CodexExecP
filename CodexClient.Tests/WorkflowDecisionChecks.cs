@@ -2,6 +2,7 @@ using System.Text.Json;
 using CodexClient.Acceptance;
 using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
+using CodexClient.AppServer.Workflows.ConsoleUI;
 
 internal static class WorkflowDecisionChecks
 {

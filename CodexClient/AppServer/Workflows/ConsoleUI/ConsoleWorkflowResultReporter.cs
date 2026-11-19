@@ -1,6 +1,6 @@
 using CodexClient.Acceptance;
 
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
 /// <summary>以單行步驟的緊湊時間線輸出 Workflow 執行結果。</summary>
 public sealed class ConsoleWorkflowResultReporter

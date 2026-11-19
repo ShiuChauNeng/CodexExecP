@@ -11,8 +11,10 @@
 | WorkflowAcceptanceTracker | 本次 Run 各驗收步驟的累計次數與已知項目 ID |
 | WorkflowProgressScope | 步驟結果轉為進度、定期回報與輸出錯誤隔離 |
 
-執行狀態在每次 Run 或每次步驟執行時建立；公開的步驟建構式與 Workflow 使用方式不變。
-Console 元件只處理顯示、輸入與通知，不決定驗收是否通過。
+公開的 Workflow、步驟設定與結果型別保留於 `CodexClient.AppServer.Workflows`。
+執行器、問答協調、Prompt 組合、驗收追蹤與時間管理位於 `Internal/`，namespace 為 `CodexClient.AppServer.Workflows.Internal`。
+Console 顯示、輸入與通知位於 `ConsoleUI/`，namespace 為 `CodexClient.AppServer.Workflows.ConsoleUI`，不決定驗收是否通過。
+執行狀態仍在每次 Run 或每次步驟執行時建立。
 
 ## 驗收 Step
 
@@ -162,6 +164,12 @@ var acceptance = new AppServerAcceptanceStep("Acceptance", "依原始 Spec 與�
 - 群組設定只控制自動附加的內容，不會抹除共用 thread 的對話歷史；若需要對話隔離，應使用不同 thread。
 
 ## Console 事件通知
+
+使用 Console 元件時請加入：
+
+```csharp
+using CodexClient.AppServer.Workflows.ConsoleUI;
+```
 
 Console 問答介面預設在每批問題與每次需求決策確認時提醒一次，無效輸入重問不再次提醒。
 Console 進度介面只在 Workflow 完成、停止、失敗或取消時通知一次；一般步驟完成、驗收重試與等待刷新不通知。

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.Internal;
 
 internal sealed class ExecutionTimeBudget : IDisposable
 {

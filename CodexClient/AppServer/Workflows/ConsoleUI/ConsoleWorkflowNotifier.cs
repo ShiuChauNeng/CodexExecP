@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
 /// <summary>僅對可見的 Windows Console 視窗閃爍工作列，不發出聲音。</summary>
 internal static class ConsoleWorkflowNotifier

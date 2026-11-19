@@ -1,4 +1,4 @@
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
 /// <summary>
 /// 同步 Workflow 的主控台輸出，並在每次輸出後還原文字顏色。

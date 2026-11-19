@@ -1,6 +1,6 @@
 using CodexClient.Acceptance;
 
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.Internal;
 
 /// <summary>
 /// 執行單一步驟：解析 thread、組合任務、管理執行額度並保留結果與診斷。

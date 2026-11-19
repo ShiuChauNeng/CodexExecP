@@ -1,4 +1,4 @@
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.Internal;
 
 /// <summary>
 /// 處理單一步驟的問答額度、輸入時限與使用者明確確認的需求決策。

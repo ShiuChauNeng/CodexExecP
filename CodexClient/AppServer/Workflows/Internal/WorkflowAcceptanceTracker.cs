@@ -1,6 +1,6 @@
 using CodexClient.Acceptance;
 
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.Internal;
 
 /// <summary>
 /// 保存本次 Run 各驗收步驟的必要項目、缺陷次數與補查次數。

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using CodexClient.AppServer.Workflows;
+using CodexClient.AppServer.Workflows.ConsoleUI;
 
 internal static class ConsoleProgressChecks
 {

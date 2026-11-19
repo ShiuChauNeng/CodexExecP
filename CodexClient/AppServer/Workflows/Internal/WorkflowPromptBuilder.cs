@@ -1,7 +1,7 @@
 using System.Text.Json;
 using CodexClient.Acceptance;
 
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.Internal;
 
 /// <summary>
 /// 組合步驟指令、已確認需求決策、前次驗收回饋與必要驗收清單。

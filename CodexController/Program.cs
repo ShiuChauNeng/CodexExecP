@@ -1,6 +1,7 @@
 ﻿using CodexClient.Acceptance;
 using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
+using CodexClient.AppServer.Workflows.ConsoleUI;
 using CodexClient.Exec;
 using CodexClient.Models;
 using Microsoft.Extensions.Logging;

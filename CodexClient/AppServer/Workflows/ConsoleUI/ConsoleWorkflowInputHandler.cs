@@ -1,4 +1,4 @@
-namespace CodexClient.AppServer.Workflows;
+namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
 public sealed class ConsoleWorkflowInputHandler
 {
