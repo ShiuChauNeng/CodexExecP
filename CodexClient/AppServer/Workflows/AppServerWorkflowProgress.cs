@@ -26,4 +26,9 @@ public sealed record AppServerWorkflowProgress(
     string? ThreadId,
     string Message,
     TimeSpan Elapsed,
-    bool IsHeartbeat = false);
+    bool IsHeartbeat = false)
+{
+    /// <summary>只有執行中的階段提供定期提醒與同一行刷新，等待回答及結束狀態不包含在內。</summary>
+    internal bool SupportsHeartbeat => Status is AppServerWorkflowStatus.Starting or AppServerWorkflowStatus.CreatingThread
+        or AppServerWorkflowStatus.Running or AppServerWorkflowStatus.Validating;
+}

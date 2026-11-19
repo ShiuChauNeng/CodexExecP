@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CodexClient.Acceptance;
 
 namespace CodexClient.AppServer.Workflows;
 
@@ -44,6 +45,55 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
         }
     }
 
+    /// <summary>將已判定的步驟結果轉為進度訊息，不參與流程分流。</summary>
+    internal void ReportStepResult(AppServerWorkflowStepResult result)
+    {
+        Update(GetStepStatus(result), GetStepMessage(result), result.Name, result.ThreadId);
+    }
+
+    private static AppServerWorkflowStatus GetStepStatus(AppServerWorkflowStepResult result)
+    {
+        if (result.Accepted)
+        {
+            return AppServerWorkflowStatus.StepCompleted;
+        }
+        if (result.Error is not null)
+        {
+            return AppServerWorkflowStatus.StepFailed;
+        }
+        return result.AcceptanceDecision switch
+        {
+            AcceptanceDecision.NeedsRevision => AppServerWorkflowStatus.NeedsRevision,
+            AcceptanceDecision.Inconclusive => AppServerWorkflowStatus.Validating,
+            _ => AppServerWorkflowStatus.StepFailed
+        };
+    }
+
+    private static string GetStepMessage(AppServerWorkflowStepResult result)
+    {
+        if (result.Error is not null)
+        {
+            return $"步驟失敗：{result.Error.Message}";
+        }
+        if (!result.Accepted && result.HasIssues)
+        {
+            return $"步驟有未解決問題：{string.Join("；", result.Execution!.Issues)}";
+        }
+        if (result.AcceptanceDecision == AcceptanceDecision.NeedsRevision)
+        {
+            return $"驗收不通過，累計失敗 {result.FailureCount} 次。";
+        }
+        if (result.AcceptanceDecision == AcceptanceDecision.Inconclusive)
+        {
+            return "驗收尚未完成或無法判斷。";
+        }
+        if (result.HasIssues)
+        {
+            return $"步驟完成，保留 {result.Execution!.Issues.Count} 個問題。";
+        }
+        return "步驟完成。";
+    }
+
     /// <summary>
     /// 以指定間隔產生 Workflow 心跳通知。
     /// </summary>
@@ -59,8 +109,7 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
                 lock (_sync)
                 {
                     // 輸入期間保持安靜，避免打斷使用者回答；完成或停止後也不再輸出。
-                    if (_current?.Status is AppServerWorkflowStatus.Starting or AppServerWorkflowStatus.CreatingThread
-                        or AppServerWorkflowStatus.Running or AppServerWorkflowStatus.Validating)
+                    if (_current?.SupportsHeartbeat == true)
                     {
                         Report(_current with
                         {

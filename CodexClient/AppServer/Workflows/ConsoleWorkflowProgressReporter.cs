@@ -20,44 +20,42 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         lock (_sync)
         {
             ReportCore(progress);
-            if (!progress.IsHeartbeat)
-            {
-                if (progress.Status == AppServerWorkflowStatus.Starting)
-                {
-                    _terminalNotified = false;
-                }
-                if (EnableNotifications && !_terminalNotified && progress.Status is
-                    AppServerWorkflowStatus.Completed or AppServerWorkflowStatus.Stopped or
-                    AppServerWorkflowStatus.Faulted or AppServerWorkflowStatus.Cancelled)
-                {
-                    _terminalNotified = true;
-                    ConsoleWorkflowNotifier.Notify();
-                }
-            }
+            NotifyIfFinished(progress);
         }
+    }
+
+    private void NotifyIfFinished(AppServerWorkflowProgress progress)
+    {
+        if (progress.IsHeartbeat)
+        {
+            return;
+        }
+        if (progress.Status == AppServerWorkflowStatus.Starting)
+        {
+            _terminalNotified = false;
+        }
+
+        bool finished = progress.Status is AppServerWorkflowStatus.Completed or AppServerWorkflowStatus.Stopped
+            or AppServerWorkflowStatus.Faulted or AppServerWorkflowStatus.Cancelled;
+        if (!EnableNotifications || _terminalNotified || !finished)
+        {
+            return;
+        }
+        _terminalNotified = true;
+        ConsoleWorkflowNotifier.Notify();
     }
 
     private void ReportCore(AppServerWorkflowProgress progress)
     {
-        string name = progress.StepName ?? "Workflow";
-        bool waiting = progress.Status is AppServerWorkflowStatus.Starting or AppServerWorkflowStatus.CreatingThread
-            or AppServerWorkflowStatus.Running or AppServerWorkflowStatus.Validating;
-        if (waiting)
+        if (progress.SupportsHeartbeat)
         {
-            if (!progress.IsHeartbeat || _waiting is null || _waiting.Status != progress.Status ||
-                _waiting.StepName != progress.StepName || _waiting.ThreadId != progress.ThreadId || _waiting.Message != progress.Message)
-            {
-                _waiting = progress;
-                _waitingLineKey = new object();
-            }
-            DateTimeOffset timestamp = Console.IsOutputRedirected ? progress.Timestamp : _waiting.Timestamp;
-            string waitingLine = $"[{timestamp:HH:mm:ss}] [{name}] {progress.Message}（累計 {progress.Elapsed.TotalSeconds:F0} 秒）";
-            ConsoleWorkflowOutput.WriteProgressLine(_waitingLineKey!, waitingLine, ConsoleColor.DarkGray);
+            WriteWaitingProgress(progress);
             return;
         }
 
         _waiting = null;
         _waitingLineKey = null;
+        string name = progress.StepName ?? "Workflow";
         string line = $"[{progress.Timestamp:HH:mm:ss}] [{name}] {progress.Message}（累計 {progress.Elapsed.TotalSeconds:F0} 秒）";
         if (!progress.IsHeartbeat && progress.Status is AppServerWorkflowStatus.NeedsRevision or AppServerWorkflowStatus.Cancelled)
         {
@@ -66,12 +64,28 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         }
         ConsoleColor? color = progress.IsHeartbeat ? ConsoleColor.DarkGray : progress.Status switch
         {
-            AppServerWorkflowStatus.Running => ConsoleColor.DarkGray,
             AppServerWorkflowStatus.WaitingForInput => ConsoleColor.Magenta,
             AppServerWorkflowStatus.StepCompleted or AppServerWorkflowStatus.Completed => ConsoleColor.Green,
             AppServerWorkflowStatus.StepFailed or AppServerWorkflowStatus.Stopped or AppServerWorkflowStatus.Faulted => ConsoleColor.Red,
             _ => null
         };
         ConsoleWorkflowOutput.WriteLine(line, color);
+    }
+
+    private void WriteWaitingProgress(AppServerWorkflowProgress progress)
+    {
+        // 心跳延續原訊息與時間；切換步驟、thread 或階段時另起一行。
+        bool continuesWaiting = progress.IsHeartbeat && _waiting is not null && _waiting.Status == progress.Status
+            && _waiting.StepName == progress.StepName && _waiting.ThreadId == progress.ThreadId && _waiting.Message == progress.Message;
+        if (!continuesWaiting)
+        {
+            _waiting = progress;
+            _waitingLineKey = new object();
+        }
+
+        DateTimeOffset timestamp = Console.IsOutputRedirected ? progress.Timestamp : _waiting!.Timestamp;
+        string name = progress.StepName ?? "Workflow";
+        string line = $"[{timestamp:HH:mm:ss}] [{name}] {progress.Message}（累計 {progress.Elapsed.TotalSeconds:F0} 秒）";
+        ConsoleWorkflowOutput.WriteProgressLine(_waitingLineKey!, line, ConsoleColor.DarkGray);
     }
 }

@@ -1,5 +1,19 @@
 # App Server Workflow 執行規則
 
+## 內部分工
+
+| 元件 | 責任 |
+|---|---|
+| AppServerWorkflow | 步驟設定驗證、執行順序、驗收返回與停止流程 |
+| WorkflowStepExecutor | 執行單一步驟、thread 選取、執行額度、驗證與診斷保存 |
+| WorkflowPromptBuilder | 組合步驟指令、已確認決策、驗收回饋與必要項目 |
+| WorkflowStepInput | 單一步驟的問答次數、輸入逾時、需求決策確認與紀錄 |
+| WorkflowAcceptanceTracker | 本次 Run 各驗收步驟的累計次數與已知項目 ID |
+| WorkflowProgressScope | 步驟結果轉為進度、定期回報與輸出錯誤隔離 |
+
+執行狀態在每次 Run 或每次步驟執行時建立；公開的步驟建構式與 Workflow 使用方式不變。
+Console 元件只處理顯示、輸入與通知，不決定驗收是否通過。
+
 ## 驗收 Step
 
 驗收使用 `AppServerAcceptanceStep`，直接加入原本的 Workflow：

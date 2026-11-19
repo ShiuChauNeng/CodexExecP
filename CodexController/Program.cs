@@ -24,12 +24,12 @@ try
     ILogger logger = loggerFactory.CreateLogger(applicationId);
 
     // 啟動 Runner
-    var runner = new CodexExecRunner(logger);
+    // var runner = new CodexExecRunner(logger);
 
     // Session 取得
     //var store = new SessionStore(applicationId);
     //string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
-    //string sessionName = "order-service-analysis";
+    //string sessionName = "order-service-analysis";sd
     //var lookupResult = await store.FindAsync(sessionName, workspaceRoot);
     //SessionInfo? session = null;
     ////if (lookupResult.Status == SessionLookupStatus.Matched)
@@ -107,9 +107,9 @@ try
     //    Console.WriteLine($"Response: {step.Execution.FinalResponse}");
     //}
 
-    string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
-    await using var client = new CodexAppServerClient(logger: loggerFactory.CreateLogger<CodexAppServerClient>());
-    await client.StartAsync(applicationId);
+    //string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
+    //await using var client = new CodexAppServerClient(logger: loggerFactory.CreateLogger<CodexAppServerClient>());
+    //await client.StartAsync(applicationId);
 
     //var handler = new ConsoleWorkflowInputHandler();
     //var reporter = new ConsoleWorkflowProgressReporter();
@@ -146,6 +146,11 @@ try
     //    Console.WriteLine($"Step: {step.Name}");
     //    Console.WriteLine($"Error: {step.Error}");
     //}
+
+
+    string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
+    await using var client = new CodexAppServerClient(logger: loggerFactory.CreateLogger<CodexAppServerClient>());
+    await client.StartAsync(applicationId);
 
     // 需求決策測試：原始 Spec 不變，由使用者確認的決策補充驗收依據。
     var handler = new ConsoleWorkflowInputHandler();
