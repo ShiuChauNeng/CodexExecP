@@ -9,6 +9,12 @@ internal static class ConsoleWorkflowOutput
     private static object? _progressKey;
     private static (int Left, int Top, int Width) _progressEnd;
 
+    internal static void WriteQuestionLine(string text)
+        => WriteCore(() => Console.WriteLine(text), ConsoleColor.Magenta, "\u001b[38;2;225;145;215m");
+
+    internal static void WriteAnswerPrompt(string text)
+        => WriteCore(() => Console.Write(text), ConsoleColor.Blue, "\u001b[38;2;135;190;250m");
+
     internal static void WriteLine(string text, ConsoleColor? color = null)
         => WriteCore(() => Console.WriteLine(text), color);
 
@@ -113,6 +119,11 @@ internal static class ConsoleWorkflowOutput
         {
             write();
             return;
+        }
+
+        if (color == ConsoleColor.Green && ansiColor is null)
+        {
+            ansiColor = "\u001b[38;2;120;225;150m";
         }
 
         ConsoleColor originalColor = Console.ForegroundColor;

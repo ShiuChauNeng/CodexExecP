@@ -62,9 +62,13 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
             ConsoleWorkflowOutput.WriteOrangeLine(line);
             return;
         }
+        if (!progress.IsHeartbeat && progress.Status == AppServerWorkflowStatus.WaitingForInput)
+        {
+            ConsoleWorkflowOutput.WriteQuestionLine(line);
+            return;
+        }
         ConsoleColor? color = progress.IsHeartbeat ? ConsoleColor.DarkGray : progress.Status switch
         {
-            AppServerWorkflowStatus.WaitingForInput => ConsoleColor.Magenta,
             AppServerWorkflowStatus.StepCompleted or AppServerWorkflowStatus.Completed => ConsoleColor.Green,
             AppServerWorkflowStatus.StepFailed or AppServerWorkflowStatus.Stopped or AppServerWorkflowStatus.Faulted => ConsoleColor.Red,
             _ => null

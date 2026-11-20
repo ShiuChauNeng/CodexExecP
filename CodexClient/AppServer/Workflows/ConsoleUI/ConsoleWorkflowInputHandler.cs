@@ -38,7 +38,7 @@ public sealed class ConsoleWorkflowInputHandler
             ConsoleWorkflowOutput.WriteLine("");
             return;
         }
-        ConsoleWorkflowOutput.WriteLine($"[{request.StepName}] 請回答以下問題：", ConsoleColor.Magenta);
+        ConsoleWorkflowOutput.WriteQuestionLine($"[{request.StepName}] 請回答以下問題：");
         ConsoleWorkflowOutput.WriteLine(request.Message);
     }
 
@@ -51,7 +51,7 @@ public sealed class ConsoleWorkflowInputHandler
         }
 
         var lines = question.Split('\n', 2);
-        ConsoleWorkflowOutput.WriteLine(lines[0].TrimEnd('\r'), ConsoleColor.Magenta);
+        ConsoleWorkflowOutput.WriteQuestionLine(lines[0].TrimEnd('\r'));
         if (lines.Length > 1)
         {
             ConsoleWorkflowOutput.WriteLine(lines[1]);
@@ -64,14 +64,14 @@ public sealed class ConsoleWorkflowInputHandler
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ConsoleWorkflowOutput.Write("請輸入答案：", ConsoleColor.Cyan);
+            ConsoleWorkflowOutput.WriteAnswerPrompt("請輸入答案：");
             answer = await Console.In.ReadLineAsync(cancellationToken) ?? throw new OperationCanceledException("使用者輸入已結束。");
             if (decisionConfirmation)
             {
                 answer = answer.Trim();
                 if (answer is not ("1" or "2"))
                 {
-                    ConsoleWorkflowOutput.WriteLine("請輸入 1（不記錄）或 2（確認記錄）。", ConsoleColor.Magenta);
+                    ConsoleWorkflowOutput.WriteQuestionLine("請輸入 1（不記錄）或 2（確認記錄）。");
                 }
             }
         }
