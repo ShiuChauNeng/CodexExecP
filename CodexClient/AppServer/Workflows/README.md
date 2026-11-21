@@ -16,6 +16,69 @@
 Console 顯示、輸入與通知位於 `ConsoleUI/`，namespace 為 `CodexClient.AppServer.Workflows.ConsoleUI`，不決定驗收是否通過。
 執行狀態仍在每次 Run 或每次步驟執行時建立。
 
+## 狀態層級與流程影響
+
+判定由外往內進行：App Server turn → AI 任務回覆 → 驗收資料 → C# 驗收決策 → Workflow 結果。
+外層失敗會先停止，不再採用內層結果；外層正常完成，也不代表產品驗收通過。
+`OutputSchema` 定義任務回覆的外層欄位；驗收步驟會將 `AcceptanceResultSchema` 組進其 `data`，最後以一份 Schema 傳給 AI。
+一般步驟未指定 `DataSchema` 時，`data` 為 null；也可以指定自己的結構化產出格式。
+
+| 層級 | 欄位／結果 | 代表意義 | 最後對流程的影響 |
+|---|---|---|---|
+| ① App Server 執行層 | `turn.Status == "completed"` | 這次模型回合正常結束 | 繼續解析 AI 回覆，不代表任務完成或驗收通過 |
+| ① App Server 執行層 | 其他 turn 狀態 | 回合未正常完成 | 視為執行錯誤，停止流程 |
+| ② AI 任務層 | `state = "needs_input"` | 需要使用者提供資訊或決策 | 等待回答，在同一個 thread 繼續；此時 `data=null` |
+| ② AI 任務層 | `state = "failed"` | AI 表示無法完成任務 | 停止流程，不進入驗收修正重試 |
+| ② AI 任務層 | `state = "completed"` | AI 表示這項工作已完成 | 檢查回覆格式；驗收步驟再分析 `data`，一般步驟則檢查接受條件 |
+| ② AI 任務層 | `issues` 非空 | AI 回報尚未解決的問題，不是狀態值 | `StopOnIssues=true` 就停止；預設 false，保留問題並繼續判定 |
+| ③ 單項驗收層 | `data.checks[].status = "Passed"` | 該項目符合驗收標準 | 該項目不阻擋通過；仍需看其他項目與 Findings |
+| ③ 單項驗收層 | `data.checks[].status = "Failed"` | 該項目已確認不符合標準 | 整體判為 `NeedsRevision`，包括非必要項目，不受 Finding 嚴重程度門檻影響 |
+| ③ 單項驗收層 | `data.checks[].status = "NotEvaluated"` | 該項目尚未檢查完成或無法判斷 | 若為必要項目，且沒有已知失敗條件，整體判為 `Inconclusive`；非必要項目不阻擋通過 |
+| ③ 驗收缺陷層 | `data.findings[].severity` | AI 回報缺陷的嚴重程度 | 達到 `FailureSeverity` 就判為 `NeedsRevision`；預設只有 Error 觸發 |
+| ④ C# 整體驗收決策 | `AcceptanceDecision.Passed` | 必要項目均通過，且沒有觸發失敗條件 | 驗收接受，繼續下一步 |
+| ④ C# 整體驗收決策 | `AcceptanceDecision.NeedsRevision` | 已確認有需要修正的問題 | `FailureCount + 1`，返回 `RetryStep`；達 `MaxFailures` 就停止，預設第 3 次失敗停止 |
+| ④ C# 整體驗收決策 | `AcceptanceDecision.Inconclusive` | 沒有已確認的失敗條件，但不足以判定通過 | `InconclusiveCount + 1`，重跑目前驗收步驟補查；預設最多額外補查 2 次 |
+| ⑤ Workflow 結果層 | `Succeeded = true` | 流程正常走到結尾 | 回傳流程成功，保留所有執行歷程 |
+| ⑤ Workflow 結果層 | `Succeeded = false` | 某步驟錯誤、接受條件未過，或達驗收上限 | 停止後續步驟，回傳已執行結果 |
+
+例如，下列各層結果可以同時成立：
+
+```text
+turn.Status = completed                 回合正常結束
+  state = completed                     驗收工作已完成
+    checks[0].status = Failed            發現產品缺陷
+      AcceptanceDecision = NeedsRevision
+        Workflow 返回 RetryStep（未達失敗上限時）
+```
+
+### 分析結論與限制
+
+- AI 負責回報任務 state、issues、單項驗收狀態與缺陷嚴重程度；C# 驗證資料並計算整體驗收決策與流程方向，不會自行判讀規格與實作是否一致。
+- `NotEvaluated` 是單一項目狀態，`Inconclusive` 是整體驗收決策，兩者不是一對一。必要項目漏報也會造成 Inconclusive；非必要項目 NotEvaluated 可以不阻擋通過。
+- 有可用必要項目清單時，已知缺陷優先於無法判定，會先返回修正。若沒有明確清單且尚未累積任何 Check ID，`Evaluate()` 會先回傳 Inconclusive，即使 Findings 有缺陷也不會進入 `Decide()`。
+- 未指定 `RequiredCriterionIds` 時，只能追蹤本次 Run 已回報的項目，無法發現從未回報的規格項目。每輪都需重新提供必要項目的狀態與證據。
+- JSON 格式不合法、驗收資料不完整、自訂驗證失敗、逾時或超過問答次數，會直接停止，不當作 NeedsRevision 返回修正。呼叫端取消則拋出取消例外；設定驗證等 Workflow 層級錯誤也會向呼叫端拋出。
+- `StopOnIssues=true` 的停止條件優先於驗收重試，即使已有驗收決策，也不會進入修正／補查分支或增加對應次數。issues 由 AI 填寫，不會從所有工具錯誤自動產生。
+- 失敗次數與無法判定次數分開，各驗收步驟在同一次 Run 中獨立累計，途中通過不清零；下次 Run 重新計算。
+- 一般步驟設定 `StopOnIssues=false` 時，可能同時出現 `Accepted=true`、Step `Succeeded=false`；流程依接受條件繼續，不依 Step 的 Succeeded 控制。
+- Workflow 的 `Succeeded=true` 目前只表示正常走到結尾，沒有再次檢查各驗收步驟最後一次是否通過。若 `RetryStep` 或 `NextStep` 路徑繞過重新驗收，仍可能回傳成功。
+- Schema 與資料驗證不保證證據真實或報表存在；重要產出仍需透過 `ValidateCompletionAsync` 實際檢查。
+
+### 對應程式位置
+
+| 判定內容 | 程式位置 |
+|---|---|
+| 外層 OutputSchema、任務狀態指令、turn 狀態與 AI 回覆解析 | [CodexTaskRunner.cs](../CodexTaskRunner.cs)：`OutputSchema`、`Instructions`、`RunCoreAsync()` |
+| 將驗收或自訂資料 Schema 組進外層 data | [CodexTaskRunner.cs](../CodexTaskRunner.cs)：`CreateOutputSchema()` |
+| 驗收資料 Schema 與狀態描述 | [AcceptanceResultSchema.cs](../../Acceptance/AcceptanceResultSchema.cs)：`Value` |
+| Checks、Findings 資料完整性與整體驗收決策 | [AcceptanceResult.cs](../../Acceptance/AcceptanceResult.cs)：`Validate()`、`Decide()` |
+| 自動指定驗收 Schema、必要項目來源與無項目時的判定 | [AppServerAcceptanceStep.cs](AppServerAcceptanceStep.cs)：建構式、`Evaluate()` |
+| 執行錯誤、逾時與自訂完成驗證 | [WorkflowStepExecutor.cs](Internal/WorkflowStepExecutor.cs)：`ExecuteAsync()` |
+| 問答次數與輸入逾時 | [WorkflowStepInput.cs](Internal/WorkflowStepInput.cs)：`AnswerAsync()` |
+| 驗收次數與 Accepted | [WorkflowAcceptanceTracker.cs](Internal/WorkflowAcceptanceTracker.cs)：`Record()` |
+| 接受條件、補查、返回修正與 Workflow 成功／停止 | [AppServerWorkflow.cs](AppServerWorkflow.cs)：`RunAsync()`、`RunStepsAsync()` |
+| Completed、HasIssues 與 Step Succeeded 定義 | [AppServerWorkflowStepResult.cs](AppServerWorkflowStepResult.cs) |
+
 ## 驗收 Step
 
 驗收使用 `AppServerAcceptanceStep`，直接加入原本的 Workflow：
