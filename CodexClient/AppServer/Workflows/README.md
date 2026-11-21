@@ -38,7 +38,7 @@ Console 顯示、輸入與通知位於 `ConsoleUI/`，namespace 為 `CodexClient
 | ④ C# 整體驗收決策 | `AcceptanceDecision.Passed` | 必要項目均通過，且沒有觸發失敗條件 | 驗收接受，繼續下一步 |
 | ④ C# 整體驗收決策 | `AcceptanceDecision.NeedsRevision` | 已確認有需要修正的問題 | `FailureCount + 1`，返回 `RetryStep`；達 `MaxFailures` 就停止，預設第 3 次失敗停止 |
 | ④ C# 整體驗收決策 | `AcceptanceDecision.Inconclusive` | 沒有已確認的失敗條件，但不足以判定通過 | `InconclusiveCount + 1`，重跑目前驗收步驟補查；預設最多額外補查 2 次 |
-| ⑤ Workflow 結果層 | `Succeeded = true` | 流程正常走到結尾 | 回傳流程成功，保留所有執行歷程 |
+| ⑤ Workflow 結果層 | `Succeeded = true` | 流程正常走到結尾，且各已執行驗收步驟的最後一次結果均通過 | 回傳流程成功，保留所有執行歷程 |
 | ⑤ Workflow 結果層 | `Succeeded = false` | 某步驟錯誤、接受條件未過，或達驗收上限 | 停止後續步驟，回傳已執行結果 |
 
 例如，下列各層結果可以同時成立：
@@ -61,7 +61,7 @@ turn.Status = completed                 回合正常結束
 - `StopOnIssues=true` 的停止條件優先於驗收重試，即使已有驗收決策，也不會進入修正／補查分支或增加對應次數。issues 由 AI 填寫，不會從所有工具錯誤自動產生。
 - 失敗次數與無法判定次數分開，各驗收步驟在同一次 Run 中獨立累計，途中通過不清零；下次 Run 重新計算。
 - 一般步驟設定 `StopOnIssues=false` 時，可能同時出現 `Accepted=true`、Step `Succeeded=false`；流程依接受條件繼續，不依 Step 的 Succeeded 控制。
-- Workflow 的 `Succeeded=true` 目前只表示正常走到結尾，沒有再次檢查各驗收步驟最後一次是否通過。若 `RetryStep` 或 `NextStep` 路徑繞過重新驗收，仍可能回傳成功。
+- Workflow 回傳成功前會檢查各已執行驗收步驟的最後一次結果。若 `RetryStep` 或 `NextStep` 繞過重新驗收，仍有未通過的驗收紀錄，會停止並回傳 Succeeded=false，於 StopReason 列出未通過的驗收步驟。
 - Schema 與資料驗證不保證證據真實或報表存在；重要產出仍需透過 `ValidateCompletionAsync` 實際檢查。
 
 ### 對應程式位置
@@ -76,7 +76,7 @@ turn.Status = completed                 回合正常結束
 | 執行錯誤、逾時與自訂完成驗證 | [WorkflowStepExecutor.cs](Internal/WorkflowStepExecutor.cs)：`ExecuteAsync()` |
 | 問答次數與輸入逾時 | [WorkflowStepInput.cs](Internal/WorkflowStepInput.cs)：`AnswerAsync()` |
 | 驗收次數與 Accepted | [WorkflowAcceptanceTracker.cs](Internal/WorkflowAcceptanceTracker.cs)：`Record()` |
-| 接受條件、補查、返回修正與 Workflow 成功／停止 | [AppServerWorkflow.cs](AppServerWorkflow.cs)：`RunAsync()`、`RunStepsAsync()` |
+| 接受條件、補查、返回修正、結尾驗收檢查與 Workflow 成功／停止 | [AppServerWorkflow.cs](AppServerWorkflow.cs)：`RunAsync()`、`RunStepsAsync()` |
 | Completed、HasIssues 與 Step Succeeded 定義 | [AppServerWorkflowStepResult.cs](AppServerWorkflowStepResult.cs) |
 
 ## 執行前流程摘要
@@ -220,7 +220,7 @@ Workflow 會逐步傳遞選項；App Server 即使共用 thread，下一步仍�
 停止原因：必要驗收項目仍無法判定，已達補查上限（2 次）。
 ```
 
-`result.StopReason` 保留執行／驗證失敗、未解決 issues、驗收失敗達上限、補查達上限或分流失敗的原因。
+`result.StopReason` 保留執行／驗證失敗、未解決 issues、驗收失敗達上限、補查達上限、分流失敗或結尾驗收檢查未通過的原因。
 成功時為 null；停止原因獨立於 `result.Error`，因此補查達上限或 StopOnIssues 停止即使 Error 為 null，仍有可讀說明。
 Reporter 不自行推算重試上限；手動建立結果未提供 StopReason 時，退回 Error.Message，兩者皆無則顯示「未提供停止原因」。
 外部取消與流程設定錯誤仍依原有方式拋出例外，不會因此改為回傳結果。
@@ -253,7 +253,13 @@ Reporter 不自行推算重試上限；手動建立結果未提供 StopReason �
 - `HasIssues`：AI 回報尚未解決的問題；不是所有工具失敗的集合，也不直接代表驗收是否通過。
 - Step 的 `Succeeded`：一般步驟為 Completed 且沒有 issues；驗收 Step 為 Completed 且 Accepted。
 - `Accepted`：通過這個步驟的流程接受條件；驗收 Step 不通過時為 false。一般步驟 StopOnIssues=false 時允許帶 issues 完成。
-- Workflow 的 `Succeeded`：流程正常走到結尾；歷程可以包含重跑前未通過的驗收結果。
+- Workflow 的 `Succeeded`：流程正常走到結尾，且各已執行驗收步驟的最後一次結果均通過；歷程可以包含重跑前未通過的驗收結果。
+
+結尾驗收檢查依步驟名稱分組（區分大小寫），只看每個已執行 `AppServerAcceptanceStep` 的最後一次結果。
+先前失敗、後來通過可以正常成功；若仍未通過，就回傳 `Succeeded=false`、`Error=null`，
+`FailedStep` 指向第一個尚未通過的驗收，`StopReason` 列出所有尚未通過的驗收名稱與決策，並回報 Stopped 而非 Completed。
+這項檢查不自動重跑、不增加失敗或補查次數，也不要求因分流而從未執行的驗收必須通過。
+它只確認既有驗收結果，不會重新執行測試，亦不會自動判定後續步驟是否使先前的 Passed 失效；需要再次驗證時仍須安排驗收步驟。
 
 重要產出應提供 `ValidateCompletionAsync`，實際檢查檔案、建置或業務條件。
 未設定驗證時，`Completed` 仍只是接受 AI 回報的完成狀態。

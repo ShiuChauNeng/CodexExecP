@@ -263,6 +263,20 @@ public sealed class AppServerWorkflow
                 return Finish(false, step.Name, results, threads, ex, reason);
             }
         }
+        var pendingAcceptances = results.Where(result => result.AcceptanceDecision is not null)
+            .GroupBy(result => result.Name, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .Where(result => !result.Accepted)
+            .ToArray();
+        if (pendingAcceptances.Length > 0)
+        {
+            var first = pendingAcceptances[0];
+            string names = string.Join("、", pendingAcceptances.Select(result => $"{result.Name}（{result.AcceptanceDecision}）"));
+            string reason = $"流程結束前檢查未通過：{names} 的最後一次驗收仍未通過，需完成修正或補查並重新驗收。";
+            progress.Update(AppServerWorkflowStatus.Stopped, reason, first.Name, first.ThreadId);
+            return Finish(false, first.Name, results, threads, stopReason: reason);
+        }
+
         progress.Update(AppServerWorkflowStatus.Completed, $"Workflow 已完成，共 {results.Count} 個步驟。");
 
         return Finish(true, null, results, threads);

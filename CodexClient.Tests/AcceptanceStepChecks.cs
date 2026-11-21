@@ -39,6 +39,51 @@ internal static class AcceptanceStepChecks
             Assert(client.Prompts[2].Contains("Spec and code evidence") && client.Prompts[2].Contains("\"acceptanceStep\":\"Review\""));
             Assert(!client.Prompts[4].Contains("\"acceptanceStep\":\"Review\""));
         });
+        await Check("final acceptance guard rejects a forward retry that bypasses reassessment", async () =>
+        {
+            var client = new Client { Assessment = (_, _) => Result(FindingSeverity.Error) };
+            var progress = new RecordingProgress();
+            var workflow = new AppServerWorkflow(client, workspace, (_, _) => Task.FromResult<IReadOnlyList<string>>([]), progress);
+            var result = await workflow.Add(new("Implement", "implement"))
+                .Add(new AppServerAcceptanceStep("Review", "[review:A]") { RetryStep = "Style" })
+                .Add(new("Style", "style")).RunAsync();
+            Assert(!result.Succeeded && result.FailedStep == "Review" && result.Error is null);
+            Assert(result.StopReason!.Contains("Review（NeedsRevision）") && result.StopReason.Contains("流程結束前檢查"));
+            Assert(result.Steps.Select(step => step.Name).SequenceEqual(["Implement", "Review", "Style"]));
+            Assert(result.Steps[1].FailureCount == 1 && result.Steps.Last().Accepted);
+            Assert(progress.Items.Last().Status == AppServerWorkflowStatus.Stopped);
+            Assert(progress.Items.All(item => item.Status != AppServerWorkflowStatus.Completed));
+        });
+        await Check("final acceptance guard rejects routing around acceptance after revision", async () =>
+        {
+            var client = new Client { Assessment = (_, _) => Result(FindingSeverity.Error) };
+            var result = await Workflow(client).Add(new("Implement", "implement")
+                { NextStep = context => context.Steps.Any(step => step.Name == "Review") ? "Style" : null })
+                .Add(Review()).Add(new("Style", "style")).RunAsync();
+            Assert(!result.Succeeded && result.FailedStep == "Review" && result.Error is null);
+            Assert(result.StopReason!.Contains("Review（NeedsRevision）"));
+            Assert(result.Steps.Select(step => step.Name).SequenceEqual(["Implement", "Review", "Implement", "Style"]));
+        });
+        await Check("final acceptance guard reports every pending acceptance independently", async () =>
+        {
+            var client = new Client { Assessment = (_, _) => Result(FindingSeverity.Error) };
+            var result = await Workflow(client)
+                .Add(new AppServerAcceptanceStep("ReviewA", "[review:A]") { RetryStep = "Continue" })
+                .Add(new("Continue", "continue"))
+                .Add(new AppServerAcceptanceStep("ReviewB", "[review:B]") { RetryStep = "Style" })
+                .Add(new("Style", "style")).RunAsync();
+            Assert(!result.Succeeded && result.FailedStep == "ReviewA" && result.Error is null);
+            Assert(result.StopReason!.Contains("ReviewA（NeedsRevision）") && result.StopReason.Contains("ReviewB（NeedsRevision）"));
+            Assert(result.Steps.Count == 4 && result.Steps[0].FailureCount == 1 && result.Steps[2].FailureCount == 1);
+        });
+        await Check("final acceptance guard permits an intentionally skipped acceptance", async () =>
+        {
+            var result = await Workflow(new())
+                .Add(new("Implement", "implement") { NextStep = _ => "Style" })
+                .Add(Review()).Add(new("Style", "style")).RunAsync();
+            Assert(result.Succeeded && result.FailedStep is null && result.StopReason is null);
+            Assert(result.Steps.Select(step => step.Name).SequenceEqual(["Implement", "Style"]));
+        });
         await Check("GetOrCreate shares A and B across C acceptance retries and resets between runs", async () =>
         {
             var client = new Client { Assessment = (_, count) => Result(count % 2 == 1 ? FindingSeverity.Error : null) };
@@ -479,6 +524,19 @@ internal static class AcceptanceStepChecks
         if (!condition)
         {
             throw new Exception("Acceptance step assertion failed.");
+        }
+    }
+
+    private sealed class RecordingProgress : IProgress<AppServerWorkflowProgress>
+    {
+        internal List<AppServerWorkflowProgress> Items { get; } = [];
+
+        /// <summary>
+        /// 同步保存進度，驗證結尾檢查失敗時不會回報流程完成。
+        /// </summary>
+        public void Report(AppServerWorkflowProgress value)
+        {
+            Items.Add(value);
         }
     }
 
