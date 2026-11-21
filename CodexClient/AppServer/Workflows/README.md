@@ -79,6 +79,25 @@ turn.Status = completed                 回合正常結束
 | 接受條件、補查、返回修正與 Workflow 成功／停止 | [AppServerWorkflow.cs](AppServerWorkflow.cs)：`RunAsync()`、`RunStepsAsync()` |
 | Completed、HasIssues 與 Step Succeeded 定義 | [AppServerWorkflowStepResult.cs](AppServerWorkflowStepResult.cs) |
 
+## 執行前流程摘要
+
+完成 Add／AddRange 後、呼叫 RunAsync 前，可輸出目前設定：
+
+```csharp
+new ConsoleWorkflowPlanReporter().Report(workflow);
+var result = await workflow.RunAsync();
+new ConsoleWorkflowResultReporter().Report(result);
+```
+
+摘要依宣告順序列出步驟名稱、Model、Sandbox、推理強度、沙箱網路選項與 StopOnIssues。
+有設定時另外顯示共用 Thread、決策記錄／讀取群組、動態分流，以及每個驗收步驟的失敗門檻、失敗上限、額外補查次數、返回目標與明確必要項目。
+未指定 Model／推理強度會標示沿用設定，不推測實際模型；WorkspaceWrite 未指定 NetworkAccess 時會標示禁止（預設）。
+
+`workflow.WorkspaceRoot` 提供絕對工作區路徑，`workflow.Steps` 每次取得目前加入順序的唯讀清單快照；後續 Add 不改變先前快照。
+摘要不會執行 PromptFactory、NextStep、AI 任務或設定驗證；實際路徑仍可能因驗收重試與動態分流而改變。
+設定驗證維持在 RunAsync 中；後續若調整了步驟，需重新呼叫 Reporter 才能顯示最新摘要。
+Program 的測試範例已在執行前呼叫此 Reporter；其他呼叫端可以自行選擇是否顯示。
+
 ## 驗收 Step
 
 驗收使用 `AppServerAcceptanceStep`，直接加入原本的 Workflow：

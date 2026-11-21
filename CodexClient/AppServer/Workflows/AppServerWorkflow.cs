@@ -19,6 +19,25 @@ public sealed class AppServerWorkflow
     private int _running;
 
     /// <summary>
+    /// 此 Workflow 使用的絕對工作區路徑。
+    /// </summary>
+    public string WorkspaceRoot => _workspaceRoot;
+
+    /// <summary>
+    /// 依加入順序取得步驟清單快照；不包含重跑歷程，也不預先計算動態分流。
+    /// </summary>
+    public IReadOnlyList<AppServerWorkflowStep> Steps
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return Array.AsReadOnly(_steps.ToArray());
+            }
+        }
+    }
+
+    /// <summary>
     /// 等待 AI 或其他執行階段時的狀態提醒間隔；等待使用者輸入期間不輸出定期提醒。
     /// </summary>
     public TimeSpan ProgressInterval { get; init; } = TimeSpan.FromSeconds(1);

@@ -166,10 +166,10 @@ try
     var workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
 
 
-    Console.WriteLine($"測試工作區：{workspaceRoot}");
-    Console.WriteLine("本次將建立或覆寫 DecisionDemo.Spec.md、DecisionDemo.Result.txt、DecisionDemo.Acceptance.md。");
-    Console.WriteLine("原始 Spec 要求 ERROR。建議在實作提問時回答 EMPTY，再選 2 確認為需求變更。");
-    Console.WriteLine("也可以重跑時選 1 不記錄，觀察驗收是否指出與原始 Spec 不一致。");
+    //Console.WriteLine($"測試工作區：{workspaceRoot}");
+    //Console.WriteLine("本次將建立或覆寫 DecisionDemo.Spec.md、DecisionDemo.Result.txt、DecisionDemo.Acceptance.md。");
+    //Console.WriteLine("原始 Spec 要求 ERROR。建議在實作提問時回答 EMPTY，再選 2 確認為需求變更。");
+    //Console.WriteLine("也可以重跑時選 1 不記錄，觀察驗收是否指出與原始 Spec 不一致。");
 
     workflow
         .Add(new AppServerWorkflowStep(
@@ -231,6 +231,9 @@ try
         {
             Options = writeOptions
         });
+
+    var planReporter = new ConsoleWorkflowPlanReporter();
+    planReporter.Report(workflow);
 
     var result = await workflow.RunAsync();
 
