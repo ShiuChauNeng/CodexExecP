@@ -12,6 +12,9 @@ internal sealed class WorkflowAcceptanceTracker
 
 
     // Constructors
+    /// <summary>
+    /// 為各驗收步驟建立本次 Run 專用的項目與次數紀錄。
+    /// </summary>
     internal WorkflowAcceptanceTracker(IEnumerable<AppServerWorkflowStep> steps)
     {
         _states = steps.OfType<AppServerAcceptanceStep>()
@@ -20,9 +23,15 @@ internal sealed class WorkflowAcceptanceTracker
 
 
     // Methods
+    /// <summary>
+    /// 取得指定驗收步驟累積的項目 ID；一般步驟回傳 null。
+    /// </summary>
     internal HashSet<string>? GetKnownCriterionIds(string stepName)
         => _states.GetValueOrDefault(stepName)?.KnownCriterionIds;
 
+    /// <summary>
+    /// 依任務接受條件累計驗收次數，並更新結果的 Accepted 與累計次數。
+    /// </summary>
     internal AppServerWorkflowStepResult Record(AppServerWorkflowStepResult result, bool taskAccepted)
     {
         var state = _states.GetValueOrDefault(result.Name);

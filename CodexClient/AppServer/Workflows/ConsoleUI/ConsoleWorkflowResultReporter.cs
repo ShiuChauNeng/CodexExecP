@@ -3,10 +3,14 @@ using System.Text;
 
 namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
-/// <summary>以緊湊時間線輸出 Workflow 執行結果，並列出已確認需求決策。</summary>
+/// <summary>
+/// 以緊湊時間線輸出 Workflow 執行結果，並列出已確認需求決策。
+/// </summary>
 public sealed class ConsoleWorkflowResultReporter
 {
-    /// <summary>輸出流程結果、各次步驟紀錄與已確認需求決策；只有驗收結果顯示累計次數。</summary>
+    /// <summary>
+    /// 輸出流程結果、各次步驟紀錄與已確認需求決策；只有驗收結果顯示累計次數。
+    /// </summary>
     /// <param name="result">要輸出的 Workflow 結果。</param>
     public void Report(AppServerWorkflowResult result)
     {
@@ -54,6 +58,9 @@ public sealed class ConsoleWorkflowResultReporter
         ReportDecisions(result.Decisions);
     }
 
+    /// <summary>
+    /// 列出已確認需求決策的筆數、來源、確認時間、問題與回答。
+    /// </summary>
     private static void ReportDecisions(IReadOnlyList<AppServerWorkflowDecision> decisions)
     {
         ConsoleWorkflowOutput.WriteLine($"已確認需求決策：{decisions.Count} 筆");
@@ -65,6 +72,9 @@ public sealed class ConsoleWorkflowResultReporter
         }
     }
 
+    /// <summary>
+    /// 依步驟完成、接受與驗收結果，取得顯示標籤及顏色。
+    /// </summary>
     private static (string Text, ConsoleColor Color) GetStatus(AppServerWorkflowStepResult step)
     {
         if (!step.Completed)
@@ -83,7 +93,9 @@ public sealed class ConsoleWorkflowResultReporter
         };
     }
 
-    /// <summary>依常見中英文等寬終端機的欄寬計算，避免中文字元使欄位錯位。</summary>
+    /// <summary>
+    /// 依常見中英文等寬終端機的欄寬計算，避免中文字元使欄位錯位。
+    /// </summary>
     private static int GetDisplayWidth(string text)
         => text.EnumerateRunes().Sum(character => character.Value is
             >= 0x2E80 and <= 0xA4CF or >= 0xF900 and <= 0xFAFF or

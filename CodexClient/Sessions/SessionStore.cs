@@ -19,6 +19,9 @@ public sealed class SessionStore
 
 
     // Constructors
+    /// <summary>
+    /// 建立指定應用程式的 session 儲存區。
+    /// </summary>
     public SessionStore(string applicationId, string? baseDirectory = null)
     {
         ValidateName(applicationId, nameof(applicationId));

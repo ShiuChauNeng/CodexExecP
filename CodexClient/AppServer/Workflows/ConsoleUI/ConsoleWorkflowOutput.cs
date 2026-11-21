@@ -9,25 +9,45 @@ internal static class ConsoleWorkflowOutput
     private static object? _progressKey;
     private static (int Left, int Top, int Width) _progressEnd;
 
+    /// <summary>
+    /// 以問題提示色輸出文字並換行。
+    /// </summary>
     internal static void WriteQuestionLine(string text)
         => WriteCore(() => Console.WriteLine(text), ConsoleColor.Magenta, "\u001b[38;2;225;145;215m");
 
+    /// <summary>
+    /// 以回答提示色輸出文字，保留游標供使用者輸入。
+    /// </summary>
     internal static void WriteAnswerPrompt(string text)
         => WriteCore(() => Console.Write(text), ConsoleColor.Blue, "\u001b[38;2;135;190;250m");
 
+    /// <summary>
+    /// 以指定顏色輸出文字並換行，結束既有等待行。
+    /// </summary>
     internal static void WriteLine(string text, ConsoleColor? color = null)
         => WriteCore(() => Console.WriteLine(text), color);
 
+    /// <summary>
+    /// 以指定顏色輸出文字但不換行，結束既有等待行。
+    /// </summary>
     internal static void Write(string text, ConsoleColor? color = null)
         => WriteCore(() => Console.Write(text), color);
 
+    /// <summary>
+    /// 以橘色輸出文字並換行。
+    /// </summary>
     internal static void WriteOrangeLine(string text)
         => WriteCore(() => Console.WriteLine(text), ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
 
+    /// <summary>
+    /// 以橘色輸出文字但不換行。
+    /// </summary>
     internal static void WriteOrange(string text)
         => WriteCore(() => Console.Write(text), ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
 
-    /// <summary>更新同一個等待行；導向檔案或無法取得游標時維持逐行輸出。</summary>
+    /// <summary>
+    /// 更新同一個等待行；導向檔案或無法取得游標時維持逐行輸出。
+    /// </summary>
     internal static void WriteProgressLine(object key, string text, ConsoleColor? color)
     {
         lock (Sync)
@@ -76,6 +96,9 @@ internal static class ConsoleWorkflowOutput
         }
     }
 
+    /// <summary>
+    /// 在同步鎖內結束等待行，再以指定顏色輸出內容。
+    /// </summary>
     private static void WriteCore(Action write, ConsoleColor? color, string? ansiColor = null)
     {
         lock (Sync)
@@ -85,6 +108,9 @@ internal static class ConsoleWorkflowOutput
         }
     }
 
+    /// <summary>
+    /// 結束目前可覆寫的等待行，必要時換行以保護後續輸出。
+    /// </summary>
     private static void FinishProgressLine()
     {
         if (_progressKey is null)
@@ -98,6 +124,9 @@ internal static class ConsoleWorkflowOutput
         }
     }
 
+    /// <summary>
+    /// 嘗試取得游標位置及緩衝區寬度；不支援或讀取失敗時回傳 false。
+    /// </summary>
     private static bool TryGetCursor(out (int Left, int Top, int Width) cursor)
     {
         try
@@ -113,6 +142,9 @@ internal static class ConsoleWorkflowOutput
         }
     }
 
+    /// <summary>
+    /// 暫時套用輸出顏色並於結束後還原；重新導向時只輸出純文字。
+    /// </summary>
     private static void WriteColored(Action write, ConsoleColor? color, string? ansiColor = null)
     {
         if (Console.IsOutputRedirected || color is null)

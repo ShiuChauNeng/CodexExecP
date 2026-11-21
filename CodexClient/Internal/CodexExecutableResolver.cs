@@ -3,6 +3,9 @@ namespace CodexClient.Internal;
 
 internal static class CodexExecutableResolver
 {
+    /// <summary>
+    /// 驗證指定的 Codex 執行檔路徑；未指定時搜尋 PATH 中的執行檔。
+    /// </summary>
     public static string Resolve(string? executablePath = null)
     {
         if (executablePath is not null)

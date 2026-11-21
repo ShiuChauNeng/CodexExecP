@@ -12,6 +12,9 @@ public interface IAppServerClient
 
 
     // Methods
+    /// <summary>
+    /// 在指定工作區建立新的 thread，回傳其識別碼。
+    /// </summary>
     Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default);
 
     /// <summary>

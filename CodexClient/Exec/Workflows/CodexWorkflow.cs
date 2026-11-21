@@ -14,6 +14,9 @@ public sealed class CodexWorkflow
 
 
     // Constructors
+    /// <summary>
+    /// 建立使用 Codex exec 的工作流程，設定執行器、記錄器與工作區。
+    /// </summary>
     public CodexWorkflow(CodexExecRunner runner, ILogger<CodexWorkflow> logger, string workspaceRoot)
     {
         ArgumentNullException.ThrowIfNull(runner);

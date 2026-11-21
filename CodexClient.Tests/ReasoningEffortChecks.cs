@@ -5,6 +5,9 @@ using CodexClient.Models;
 
 internal static class ReasoningEffortChecks
 {
+    /// <summary>
+    /// 驗證推理強度設定、參數傳遞與無效值拒絕行為。
+    /// </summary>
     internal static async Task<int> RunAsync(string workspace)
     {
         await using var client = new CodexAppServerClient(Environment.ProcessPath!);

@@ -11,6 +11,9 @@ internal static class WorkflowRoutingChecks
         required = new[] { "approved" }, additionalProperties = false
     });
 
+    /// <summary>
+    /// 驗證流程跳轉、thread 重用與驗收返回時的提示組合。
+    /// </summary>
     internal static async Task<int> RunAsync(string workspace)
     {
         int passed = 0;
@@ -229,7 +232,13 @@ internal static class WorkflowRoutingChecks
         });
         return passed;
 
+        /// <summary>
+        /// 以測試用戶端、測試工作區與回答處理建立工作流程。
+        /// </summary>
         AppServerWorkflow Workflow(ScriptedClient client) => new(client, workspace, Answers);
+        /// <summary>
+        /// 執行測試案例，成功後累計通過數並輸出案例名稱。
+        /// </summary>
         async Task Check(string name, Func<Task> check)
         {
             await check();
@@ -238,9 +247,15 @@ internal static class WorkflowRoutingChecks
         }
     }
 
+    /// <summary>
+    /// 回傳空的回答清單，供不需要提問的分流測試使用。
+    /// </summary>
     private static Task<IReadOnlyList<string>> Answers(AppServerWorkflowInputRequest _, CancellationToken token)
         => Task.FromResult<IReadOnlyList<string>>([]);
 
+    /// <summary>
+    /// 檢查測試條件，不符合時拋出例外使案例失敗。
+    /// </summary>
     private static void Assert(bool condition)
     {
         if (!condition)
@@ -258,9 +273,15 @@ internal static class WorkflowRoutingChecks
         public string[] Issues { get; init; } = [];
         public bool Fail { get; init; }
 
+        /// <summary>
+        /// 建立測試用 thread 識別碼，不啟動實際 App Server。
+        /// </summary>
         public Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
             => Task.FromResult($"thread-{++ThreadCount}");
 
+        /// <summary>
+        /// 依測試情境產生模擬 turn 結果，不呼叫實際 AI。
+        /// </summary>
         public Task<TurnResult> RunTurnAsync(string threadId, string prompt, JsonElement? outputSchema = null,
             AppServerOptions? options = null, CancellationToken cancellationToken = default)
         {

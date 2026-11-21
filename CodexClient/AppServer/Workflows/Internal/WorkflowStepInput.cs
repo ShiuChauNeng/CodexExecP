@@ -17,6 +17,9 @@ internal sealed class WorkflowStepInput
 
 
     // Constructors
+    /// <summary>
+    /// 建立單一步驟的問答協調器，設定進度、執行額度與回答處理。
+    /// </summary>
     internal WorkflowStepInput(AppServerWorkflowStep step,
         Func<AppServerWorkflowInputRequest, CancellationToken, Task<IReadOnlyList<string>>> answerQuestionsAsync,
         WorkflowProgressScope progress, ExecutionTimeBudget budget)
@@ -29,6 +32,9 @@ internal sealed class WorkflowStepInput
 
 
     // Methods
+    /// <summary>
+    /// 檢查問答次數並暫停執行額度，限時收集回答與需求決策後恢復計時。
+    /// </summary>
     internal async Task<IReadOnlyList<string>> AnswerAsync(TaskInputRequest request, CancellationToken cancellationToken)
     {
         if (_step.MaxInputRounds is { } max && _inputRounds >= max)
@@ -82,6 +88,9 @@ internal sealed class WorkflowStepInput
         return Array.AsReadOnly(answerSnapshot);
     }
 
+    /// <summary>
+    /// 逐題詢問是否記錄為需求決策，僅保存使用者明確確認的回答。
+    /// </summary>
     private async Task RecordConfirmedDecisionsAsync(TaskInputRequest request, string[] answerSnapshot,
         CancellationToken cancellationToken)
     {

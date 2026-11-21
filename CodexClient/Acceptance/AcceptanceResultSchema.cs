@@ -2,7 +2,9 @@ using System.Text.Json;
 
 namespace CodexClient.Acceptance;
 
-/// <summary>指定給驗收步驟的 DataSchema，不包含 TaskRunner 外層的 state/message/issues。</summary>
+/// <summary>
+/// 指定給驗收步驟的 DataSchema，不包含 TaskRunner 外層的 state/message/issues。
+/// </summary>
 public static class AcceptanceResultSchema
 {
     public static JsonElement Value { get; } = JsonSerializer.Deserialize<JsonElement>(

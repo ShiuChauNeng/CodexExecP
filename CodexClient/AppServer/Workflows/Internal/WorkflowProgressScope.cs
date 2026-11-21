@@ -16,6 +16,9 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
 
 
     // Constructors
+    /// <summary>
+    /// 建立進度回報範圍，驗證提醒間隔並啟動定期心跳。
+    /// </summary>
     internal WorkflowProgressScope(IProgress<AppServerWorkflowProgress>? reporter, TimeSpan interval)
     {
         if (interval <= TimeSpan.Zero || interval.TotalMilliseconds > uint.MaxValue - 1)
@@ -45,12 +48,17 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
         }
     }
 
-    /// <summary>將已判定的步驟結果轉為進度訊息，不參與流程分流。</summary>
+    /// <summary>
+    /// 將已判定的步驟結果轉為進度訊息，不參與流程分流。
+    /// </summary>
     internal void ReportStepResult(AppServerWorkflowStepResult result)
     {
         Update(GetStepStatus(result), GetStepMessage(result), result.Name, result.ThreadId);
     }
 
+    /// <summary>
+    /// 依步驟錯誤、接受條件與驗收決策取得進度狀態。
+    /// </summary>
     private static AppServerWorkflowStatus GetStepStatus(AppServerWorkflowStepResult result)
     {
         if (result.Accepted)
@@ -69,6 +77,9 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
         };
     }
 
+    /// <summary>
+    /// 依步驟錯誤、問題與驗收決策產生進度說明。
+    /// </summary>
     private static string GetStepMessage(AppServerWorkflowStepResult result)
     {
         if (result.Error is not null)

@@ -32,7 +32,9 @@ public enum AppServerThreadMode
     GetOrCreate
 }
 
-/// <summary>PerStep 重用步驟專屬 thread；New 每次建立新 thread；Create/Use/GetOrCreate 依鍵值共用 thread。</summary>
+/// <summary>
+/// PerStep 重用步驟專屬 thread；New 每次建立新 thread；Create/Use/GetOrCreate 依鍵值共用 thread。
+/// </summary>
 public sealed class AppServerThread
 {
     // Properties
@@ -51,6 +53,9 @@ public sealed class AppServerThread
 
 
     // Constructors
+    /// <summary>
+    /// 建立 thread 模式及其選填的共用識別名稱。
+    /// </summary>
     private AppServerThread(AppServerThreadMode mode, string? key = null)
         => (Mode, Key) = (mode, key);
 

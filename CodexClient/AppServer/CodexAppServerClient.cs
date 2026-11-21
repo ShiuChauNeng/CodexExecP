@@ -14,14 +14,18 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
     private readonly SemaphoreSlim _turnLock = new(1, 1);
     private AppServerTurnDiagnostics? _lastTurnDiagnostics;
 
-    /// <summary>最近一次 turn 的診斷快照，失敗或取消後仍可讀取。</summary>
+    /// <summary>
+    /// 最近一次 turn 的診斷快照，失敗或取消後仍可讀取。
+    /// </summary>
     public AppServerTurnDiagnostics? LastTurnDiagnostics
     {
         get => Volatile.Read(ref _lastTurnDiagnostics);
         private set => Volatile.Write(ref _lastTurnDiagnostics, value);
     }
 
-    /// <summary>連線層級 stderr 尾端，最多保留 16384 個字元及截斷提示。</summary>
+    /// <summary>
+    /// 連線層級 stderr 尾端，最多保留 16384 個字元及截斷提示。
+    /// </summary>
     public string StandardError => _connection.StandardError;
 
     private bool _initialized;
@@ -29,6 +33,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 
 
     // Constructors
+    /// <summary>
+    /// 建立 App Server 用戶端及其底層連線。
+    /// </summary>
     public CodexAppServerClient(string? executablePath = null, ILogger<CodexAppServerClient>? logger = null)
     {
         _logger = logger ?? NullLogger<CodexAppServerClient>.Instance;
@@ -145,6 +152,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
         var diagnosticsSync = new object();
         string? currentTurnId = null;
         LastTurnDiagnostics = null;
+        /// <summary>
+        /// 在同步鎖內擷取目前 turn 的項目、錯誤與標準錯誤快照。
+        /// </summary>
         AppServerTurnDiagnostics Snapshot()
         {
             lock (diagnosticsSync)
@@ -157,6 +167,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
             var turnCompletion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
             var response = new StringBuilder();
             string? finalResponse = null;
+            /// <summary>
+            /// 處理目前 thread 的通知，累積回覆、診斷與 turn 完成結果。
+            /// </summary>
             void OnNotification(AppServerEvent notification)
             {
                 JsonElement parameters = notification.Params;

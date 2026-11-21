@@ -23,7 +23,9 @@ public sealed record AppServerWorkflowStepResult(string Name, string? ThreadId, 
     /// </summary>
     public IReadOnlyList<AppServerTurnDiagnostics> Diagnostics { get; init; } = [];
 
-    /// <summary>此步驟執行期間，由使用者明確確認的需求決策。</summary>
+    /// <summary>
+    /// 此步驟執行期間，由使用者明確確認的需求決策。
+    /// </summary>
     public IReadOnlyList<AppServerWorkflowDecision> Decisions { get; init; } = [];
 
     /// <summary>

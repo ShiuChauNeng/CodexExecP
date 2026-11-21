@@ -38,13 +38,17 @@ public sealed record AcceptanceFinding(
     [property: JsonRequired] string Evidence,
     [property: JsonRequired] string? SuggestedFix);
 
-/// <summary>Skill 負責驗收判斷；此型別只檢查資料完整性並依結果決定流程方向。</summary>
+/// <summary>
+/// Skill 負責驗收判斷；此型別只檢查資料完整性並依結果決定流程方向。
+/// </summary>
 public sealed record AcceptanceResult(
     [property: JsonRequired] IReadOnlyList<AcceptanceCheck> Checks,
     [property: JsonRequired] IReadOnlyList<AcceptanceFinding> Findings,
     [property: JsonRequired] string ReportPath)
 {
-    /// <summary>驗證資料格式；驗收不合格或尚未完成，不會因此拋出例外。</summary>
+    /// <summary>
+    /// 驗證資料格式；驗收不合格或尚未完成，不會因此拋出例外。
+    /// </summary>
     public void Validate()
     {
         ArgumentNullException.ThrowIfNull(Checks);

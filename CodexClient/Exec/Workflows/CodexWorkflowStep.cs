@@ -32,6 +32,9 @@ public sealed class CodexWorkflowStep
 
 
     // Constructors
+    /// <summary>
+    /// 以名稱與固定提示文字建立 exec 工作流程步驟。
+    /// </summary>
     public CodexWorkflowStep(string name, string prompt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

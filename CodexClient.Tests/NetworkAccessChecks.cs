@@ -8,6 +8,9 @@ using CodexClient.Models;
 
 internal static class NetworkAccessChecks
 {
+    /// <summary>
+    /// 驗證 exec 與 App Server 的網路權限參數及沙箱限制。
+    /// </summary>
     internal static async Task<int> RunAsync(string workspace)
     {
         int passed = 0;
@@ -94,6 +97,9 @@ internal static class NetworkAccessChecks
         return passed;
     }
 
+    /// <summary>
+    /// 解析模擬 exec 回報的參數，檢查網路權限覆寫是否符合設定。
+    /// </summary>
     private static void VerifyArguments(string response, bool? access)
     {
         string[] arguments = JsonSerializer.Deserialize<string[]>(response)!;
@@ -109,6 +115,9 @@ internal static class NetworkAccessChecks
         }
     }
 
+    /// <summary>
+    /// 檢查測試條件，不符合時拋出例外使案例失敗。
+    /// </summary>
     private static void Assert(bool condition)
     {
         if (!condition)

@@ -8,6 +8,9 @@ internal static class AcceptanceStepChecks
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// 驗證驗收步驟的修正、補查、次數上限與異常停止行為。
+    /// </summary>
     internal static async Task<int> RunAsync(string workspace)
     {
         int passed = 0;
@@ -438,7 +441,13 @@ internal static class AcceptanceStepChecks
         });
         return passed;
 
+        /// <summary>
+        /// 以測試用戶端、測試工作區與回答處理建立工作流程。
+        /// </summary>
         AppServerWorkflow Workflow(Client client) => new(client, workspace, (_, _) => Task.FromResult<IReadOnlyList<string>>([]));
+        /// <summary>
+        /// 執行測試案例，成功後累計通過數並輸出案例名稱。
+        /// </summary>
         async Task Check(string name, Func<Task> action)
         {
             await action();
@@ -447,13 +456,22 @@ internal static class AcceptanceStepChecks
         }
     }
 
+    /// <summary>
+    /// 建立返回 Implement 的測試用驗收步驟。
+    /// </summary>
     private static AppServerAcceptanceStep Review() => new("Review", "[review:A]") { RetryStep = "Implement" };
 
+    /// <summary>
+    /// 建立包含驗收項目、缺陷與報表路徑的測試資料。
+    /// </summary>
     private static AcceptanceResult Result(FindingSeverity? severity = null)
         => new([new("SPEC-001", AcceptanceCheckStatus.Passed, "Spec and code evidence")],
             severity is { } value ? [new("AC-001", value, "SPEC-001", "finding", "Spec and code evidence", "suggested fix")] : [],
             "reports/review.md");
 
+    /// <summary>
+    /// 檢查測試條件，不符合時拋出例外使案例失敗。
+    /// </summary>
     private static void Assert(bool condition)
     {
         if (!condition)
@@ -473,9 +491,15 @@ internal static class AcceptanceStepChecks
         public bool TaskIssues { get; init; }
         public bool FailedTask { get; init; }
 
+        /// <summary>
+        /// 建立測試用 thread 識別碼，不啟動實際 App Server。
+        /// </summary>
         public Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
             => Task.FromResult($"thread-{++_thread}");
 
+        /// <summary>
+        /// 依測試情境產生模擬 turn 結果，不呼叫實際 AI。
+        /// </summary>
         public Task<TurnResult> RunTurnAsync(string threadId, string prompt, JsonElement? outputSchema = null,
             AppServerOptions? options = null, CancellationToken cancellationToken = default)
         {

@@ -5,6 +5,9 @@ using CodexClient.AppServer.Workflows;
 
 internal static class AcceptanceStepDemo
 {
+    /// <summary>
+    /// 以記憶體模擬驗收反覆失敗或修正後通過的工作流程。
+    /// </summary>
     internal static async Task RunAsync(bool alwaysFail)
     {
         Console.WriteLine("驗收 Step 示範：全程使用記憶體模擬，不呼叫 AI、不修改檔案。");
@@ -48,9 +51,15 @@ internal static class AcceptanceStepDemo
         private int _reviews;
         private int _sum;
 
+        /// <summary>
+        /// 建立測試用 thread 識別碼，不啟動實際 App Server。
+        /// </summary>
         public Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
             => Task.FromResult($"demo-thread-{++_thread}");
 
+        /// <summary>
+        /// 依測試情境產生模擬 turn 結果，不呼叫實際 AI。
+        /// </summary>
         public Task<TurnResult> RunTurnAsync(string threadId, string prompt, JsonElement? outputSchema = null,
             AppServerOptions? options = null, CancellationToken cancellationToken = default)
         {

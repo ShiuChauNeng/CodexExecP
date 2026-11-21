@@ -7,7 +7,9 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
     private object? _waitingLineKey;
     private bool _terminalNotified;
 
-    /// <summary>流程完成、停止、失敗或取消時通知一次；等待刷新與一般步驟完成不通知。</summary>
+    /// <summary>
+    /// 流程完成、停止、失敗或取消時通知一次；等待刷新與一般步驟完成不通知。
+    /// </summary>
     public bool EnableNotifications { get; init; } = true;
 
     /// <summary>
@@ -24,6 +26,9 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         }
     }
 
+    /// <summary>
+    /// 在流程完成、停止、失敗或取消時通知一次，忽略心跳與重複通知。
+    /// </summary>
     private void NotifyIfFinished(AppServerWorkflowProgress progress)
     {
         if (progress.IsHeartbeat)
@@ -45,6 +50,9 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         ConsoleWorkflowNotifier.Notify();
     }
 
+    /// <summary>
+    /// 依進度狀態選擇輸出文字與顏色，等待期間改用同一行更新。
+    /// </summary>
     private void ReportCore(AppServerWorkflowProgress progress)
     {
         if (progress.SupportsHeartbeat)
@@ -76,6 +84,9 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         ConsoleWorkflowOutput.WriteLine(line, color);
     }
 
+    /// <summary>
+    /// 保留等待開始時間並更新等待行的累計秒數。
+    /// </summary>
     private void WriteWaitingProgress(AppServerWorkflowProgress progress)
     {
         // 心跳延續原訊息與時間；切換步驟、thread 或階段時另起一行。

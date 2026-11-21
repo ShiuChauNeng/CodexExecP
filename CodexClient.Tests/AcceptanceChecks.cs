@@ -8,6 +8,9 @@ internal static class AcceptanceChecks
     private static readonly string[] RequiredCriteria = ["SPEC-001", "SPEC-002"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// 驗證驗收資料完整性、嚴重程度門檻與任務結果的整合行為。
+    /// </summary>
     internal static async Task<int> RunAsync(string workspace)
     {
         int passed = 0;
@@ -93,6 +96,9 @@ internal static class AcceptanceChecks
         Console.WriteLine("PASS: Skill acceptance failure remains a successful workflow step with a revision decision");
         return passed;
 
+        /// <summary>
+        /// 執行測試案例，成功後累計通過數並輸出案例名稱。
+        /// </summary>
         void Check(string name, Action action)
         {
             action();
@@ -101,15 +107,24 @@ internal static class AcceptanceChecks
         }
     }
 
+    /// <summary>
+    /// 建立包含驗收項目、缺陷與報表路徑的測試資料。
+    /// </summary>
     private static AcceptanceResult Result(AcceptanceCheckStatus status = AcceptanceCheckStatus.Passed,
         IReadOnlyList<AcceptanceFinding>? findings = null)
         => new([new("SPEC-001", status, "Spec section and test evidence"),
                 new("SPEC-002", AcceptanceCheckStatus.Passed, "Spec section and code evidence")],
             findings ?? [], "reports/acceptance-01.md");
 
+    /// <summary>
+    /// 依指定嚴重程度與識別碼建立測試用驗收缺陷。
+    /// </summary>
     private static AcceptanceFinding Finding(FindingSeverity severity, string id = "AC-001")
         => new(id, severity, "SPEC-001", "Finding description", "Spec section and code location", null);
 
+    /// <summary>
+    /// 確認指定動作拋出預期型別的例外；未拋出時使案例失敗。
+    /// </summary>
     private static void Throws<T>(Action action) where T : Exception
     {
         try
@@ -123,6 +138,9 @@ internal static class AcceptanceChecks
         throw new Exception($"Expected {typeof(T).Name}.");
     }
 
+    /// <summary>
+    /// 檢查測試條件，不符合時拋出例外使案例失敗。
+    /// </summary>
     private static void Assert(bool condition)
     {
         if (!condition)
@@ -133,9 +151,15 @@ internal static class AcceptanceChecks
 
     private sealed class AcceptanceClient(AcceptanceResult result) : IAppServerClient
     {
+        /// <summary>
+        /// 建立測試用 thread 識別碼，不啟動實際 App Server。
+        /// </summary>
         public Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
             => Task.FromResult("acceptance-thread");
 
+        /// <summary>
+        /// 依測試情境產生模擬 turn 結果，不呼叫實際 AI。
+        /// </summary>
         public Task<TurnResult> RunTurnAsync(string threadId, string prompt, JsonElement? outputSchema = null,
             AppServerOptions? options = null, CancellationToken cancellationToken = default)
         {

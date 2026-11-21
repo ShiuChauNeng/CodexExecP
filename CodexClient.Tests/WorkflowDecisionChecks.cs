@@ -6,6 +6,9 @@ using CodexClient.AppServer.Workflows.ConsoleUI;
 
 internal static class WorkflowDecisionChecks
 {
+    /// <summary>
+    /// 驗證需求決策確認、群組傳遞、結果保存與問答限制。
+    /// </summary>
     internal static async Task<int> RunAsync(string workspace)
     {
         int passed = 0;
@@ -224,10 +227,16 @@ internal static class WorkflowDecisionChecks
         });
         return passed;
 
+        /// <summary>
+        /// 以測試用戶端、測試工作區與回答處理建立工作流程。
+        /// </summary>
         AppServerWorkflow Workflow(Client client,
             Func<AppServerWorkflowInputRequest, CancellationToken, Task<IReadOnlyList<string>>> handler)
             => new(client, workspace, handler);
 
+        /// <summary>
+        /// 執行測試案例，成功後累計通過數並輸出案例名稱。
+        /// </summary>
         async Task Check(string name, Func<Task> run)
         {
             await run();
@@ -236,9 +245,15 @@ internal static class WorkflowDecisionChecks
         }
     }
 
+    /// <summary>
+    /// 將指定回答包裝為非同步結果，供需求決策測試使用。
+    /// </summary>
     private static Task<IReadOnlyList<string>> Answer(params string[] answers)
         => Task.FromResult<IReadOnlyList<string>>(answers);
 
+    /// <summary>
+    /// 檢查測試條件，不符合時拋出例外使案例失敗。
+    /// </summary>
     private static void Assert(bool condition)
     {
         if (!condition)
@@ -257,9 +272,15 @@ internal static class WorkflowDecisionChecks
         public bool FailAfterAnswer { get; init; }
         public List<string> Prompts { get; } = [];
 
+        /// <summary>
+        /// 建立測試用 thread 識別碼，不啟動實際 App Server。
+        /// </summary>
         public Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
             => Task.FromResult($"thread-{++_thread}");
 
+        /// <summary>
+        /// 依測試情境產生模擬 turn 結果，不呼叫實際 AI。
+        /// </summary>
         public Task<TurnResult> RunTurnAsync(string threadId, string prompt, JsonElement? outputSchema = null,
             AppServerOptions? options = null, CancellationToken cancellationToken = default)
         {

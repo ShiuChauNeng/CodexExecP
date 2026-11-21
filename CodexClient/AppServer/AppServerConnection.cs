@@ -18,7 +18,9 @@ internal sealed class AppServerConnection : IAsyncDisposable
     private readonly StringBuilder _standardError = new();
     private bool _standardErrorTruncated;
 
-    /// <summary>連線層級 stderr 尾端，可能包含先前 turn 的內容。</summary>
+    /// <summary>
+    /// 連線層級 stderr 尾端，可能包含先前 turn 的內容。
+    /// </summary>
     internal string StandardError
     {
         get
@@ -47,6 +49,9 @@ internal sealed class AppServerConnection : IAsyncDisposable
 
 
     // Constructors
+    /// <summary>
+    /// 建立 App Server 程序連線，設定執行檔與記錄器。
+    /// </summary>
     public AppServerConnection(string? executablePath = null, ILogger? logger = null)
     {
         _logger = logger ?? NullLogger.Instance;

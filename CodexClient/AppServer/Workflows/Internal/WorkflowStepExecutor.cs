@@ -15,6 +15,9 @@ internal sealed class WorkflowStepExecutor
 
 
     // Constructors
+    /// <summary>
+    /// 建立單步執行器，設定用戶端、任務執行器、工作區與問答處理。
+    /// </summary>
     internal WorkflowStepExecutor(IAppServerClient client, string workspaceRoot,
         Func<AppServerWorkflowInputRequest, CancellationToken, Task<IReadOnlyList<string>>> answerQuestionsAsync)
     {
@@ -112,6 +115,9 @@ internal sealed class WorkflowStepExecutor
         };
     }
 
+    /// <summary>
+    /// 依步驟的 thread 模式解析既有識別碼；需要新建時回傳 null。
+    /// </summary>
     private static string? ResolveThreadId(AppServerWorkflowStep step, AppServerWorkflowContext context)
     {
         return step.Thread.Mode switch
@@ -123,6 +129,9 @@ internal sealed class WorkflowStepExecutor
         };
     }
 
+    /// <summary>
+    /// 補入目前 thread 的最新診斷快照，同一 turn 的舊紀錄以新快照取代。
+    /// </summary>
     private void AppendLatestDiagnostics(string? threadId, AppServerTurnDiagnostics? previousDiagnostics,
         List<AppServerTurnDiagnostics> diagnostics)
     {

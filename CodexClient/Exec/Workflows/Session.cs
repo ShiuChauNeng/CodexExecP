@@ -5,11 +5,17 @@
 /// </summary>
 public enum SessionMode
 {
-    /// <summary>不使用工作階段。</summary>
+    /// <summary>
+    /// 不使用工作階段。
+    /// </summary>
     None,
-    /// <summary>建立並保存新的工作階段。</summary>
+    /// <summary>
+    /// 建立並保存新的工作階段。
+    /// </summary>
     Create,
-    /// <summary>使用先前建立的工作階段。</summary>
+    /// <summary>
+    /// 使用先前建立的工作階段。
+    /// </summary>
     Use
 }
 
@@ -29,6 +35,9 @@ public sealed class Session
     /// </summary>
     public string? Key { get; }
 
+    /// <summary>
+    /// 建立 session 使用模式及其選填的共用識別名稱。
+    /// </summary>
     private Session(SessionMode mode, string? key = null)
     {
         Mode = mode;

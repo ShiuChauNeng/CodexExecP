@@ -5,6 +5,9 @@ using CodexClient.AppServer.Workflows.ConsoleUI;
 
 internal static class ConsoleProgressChecks
 {
+    /// <summary>
+    /// 以子程序擷取 Console 輸出，驗證等待、問答與重新導向行為。
+    /// </summary>
     internal static async Task<int> RunAsync()
     {
         string executable = Path.Combine(AppContext.BaseDirectory,
@@ -53,6 +56,9 @@ internal static class ConsoleProgressChecks
         return 1;
     }
 
+    /// <summary>
+    /// 模擬等待、同一行刷新與問答輸出，供顯示檢查使用。
+    /// </summary>
     internal static async Task DemoAsync(bool fast)
     {
         Console.OutputEncoding = new UTF8Encoding(false);

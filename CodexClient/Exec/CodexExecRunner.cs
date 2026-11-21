@@ -18,6 +18,9 @@ public sealed class CodexExecRunner
 
 
     // Constructors
+    /// <summary>
+    /// 建立 Codex exec 執行器，設定記錄器與執行檔路徑。
+    /// </summary>
     public CodexExecRunner(ILogger logger, string? executablePath = null)
     {
         _logger = logger;

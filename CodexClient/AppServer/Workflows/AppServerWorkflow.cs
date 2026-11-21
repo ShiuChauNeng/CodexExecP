@@ -30,6 +30,9 @@ public sealed class AppServerWorkflow
 
 
     // Constructors
+    /// <summary>
+    /// 建立工作流程，設定工作區、單步執行器、問答處理與進度回報。
+    /// </summary>
     public AppServerWorkflow(
         IAppServerClient client,
         string workspaceRoot,
@@ -253,6 +256,9 @@ public sealed class AppServerWorkflow
         => new(Array.AsReadOnly(results.ToArray()),
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(threads, StringComparer.Ordinal)));
 
+    /// <summary>
+    /// 驗證工作區、步驟設定、名稱唯一性、thread 宣告順序與驗收返回目標。
+    /// </summary>
     private void ValidatePlan(AppServerWorkflowStep[] steps)
     {
         if (!Directory.Exists(_workspaceRoot))

@@ -20,6 +20,8 @@ public sealed record AppServerWorkflowInputRequest(
     /// </summary>
     public bool IsDecisionConfirmation { get; init; }
 
-    /// <summary>確認時要記錄的決策群組；一般問答為 null。</summary>
+    /// <summary>
+    /// 確認時要記錄的決策群組；一般問答為 null。
+    /// </summary>
     public string? DecisionGroup { get; init; }
 }

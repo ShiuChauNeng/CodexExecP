@@ -12,6 +12,9 @@ internal sealed class ExecutionTimeBudget : IDisposable
 
 
     // Constructors
+    /// <summary>
+    /// 建立連結取消權杖與執行時間額度，立即開始累計執行時間。
+    /// </summary>
     internal ExecutionTimeBudget(TimeSpan? limit, CancellationToken cancellationToken)
     {
         _limit = limit;

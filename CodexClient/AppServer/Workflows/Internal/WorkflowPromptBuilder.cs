@@ -8,6 +8,9 @@ namespace CodexClient.AppServer.Workflows.Internal;
 /// </summary>
 internal static class WorkflowPromptBuilder
 {
+    /// <summary>
+    /// 組合步驟指令、已確認需求決策、驗收回饋與必要項目清單。
+    /// </summary>
     internal static string Create(AppServerWorkflowStep step, AppServerWorkflowContext context, string? threadId,
         HashSet<string>? knownCriterionIds, AppServerWorkflowStepResult? acceptanceFeedback)
     {

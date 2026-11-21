@@ -2,11 +2,16 @@ using System.Runtime.InteropServices;
 
 namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
-/// <summary>僅對可見的 Windows Console 視窗閃爍工作列，不發出聲音。</summary>
+/// <summary>
+/// 僅對可見的 Windows Console 視窗閃爍工作列，不發出聲音。
+/// </summary>
 internal static class ConsoleWorkflowNotifier
 {
     private const uint FlashTaskbar = 0x00000002;
     private const uint FlashUntilForeground = 0x0000000C;
+    /// <summary>
+    /// 在支援的互動式 Windows Console 不在前景時，靜默閃爍工作列。
+    /// </summary>
     internal static void Notify()
     {
         if (!OperatingSystem.IsWindows() || Console.IsOutputRedirected || !Environment.UserInteractive)
@@ -51,16 +56,28 @@ internal static class ConsoleWorkflowNotifier
         public uint Timeout;
     }
 
+    /// <summary>
+    /// 取得目前程序的 Console 視窗控制代碼。
+    /// </summary>
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetConsoleWindow();
 
+    /// <summary>
+    /// 取得目前前景視窗的控制代碼。
+    /// </summary>
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
+    /// <summary>
+    /// 查詢指定視窗是否具有可見狀態。
+    /// </summary>
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr window);
 
+    /// <summary>
+    /// 依指定參數閃爍視窗或工作列，回傳呼叫前的視窗作用中狀態。
+    /// </summary>
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FlashWindowEx(ref FlashWindowInfo info);

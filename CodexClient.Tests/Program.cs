@@ -194,16 +194,25 @@ passed += await WorkflowDecisionChecks.RunAsync(workspace);
 passed += await ConsoleProgressChecks.RunAsync();
 Console.WriteLine($"Passed {passed} checks.");
 
+/// <summary>
+/// 以測試用戶端、測試工作區與回答處理建立工作流程。
+/// </summary>
 AppServerWorkflow Workflow(IAppServerClient client,
     Func<AppServerWorkflowInputRequest, CancellationToken, Task<IReadOnlyList<string>>>? answer = null)
     => new(client, workspace, answer ?? ((_, _) => Task.FromResult<IReadOnlyList<string>>(["answer"])));
 
+/// <summary>
+/// 執行非同步測試案例，成功後累計通過數並輸出案例名稱。
+/// </summary>
 async Task CheckAsync(string name, Func<Task> check)
 {
     await check();
     passed++;
     Console.WriteLine($"PASS: {name}");
 }
+/// <summary>
+/// 檢查測試條件，不符合時拋出例外使案例失敗。
+/// </summary>
 static void Assert(bool condition)
 {
     if (!condition)
@@ -211,15 +220,30 @@ static void Assert(bool condition)
         throw new Exception("Assertion failed.");
     }
 }
+/// <summary>
+/// 建立包含任務狀態、問題與 issues 的模擬 turn 回覆。
+/// </summary>
 static TurnResult Reply(string state = "completed", string[]? issues = null) => new("thread", "1", "completed",
     JsonSerializer.Serialize(new { state, message = "summary", questions = state == "needs_input" ? new[] { "question" } : [], issues = issues ?? [], data = (object?)null }));
+/// <summary>
+/// 建立指定 turn 的測試用診斷快照。
+/// </summary>
 static AppServerTurnDiagnostics Diagnostic(string turnId) => new("thread", turnId, [], [], "stderr");
 
+/// <summary>
+/// 透過標準輸入與輸出模擬 App Server 請求、通知及異常情境。
+/// </summary>
 static async Task ServeAsync()
 {
     Console.InputEncoding = System.Text.Encoding.UTF8;
     Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+    /// <summary>
+    /// 將模擬伺服器訊息序列化為 JSON，寫入標準輸出。
+    /// </summary>
     void Send(object value) => Console.WriteLine(JsonSerializer.Serialize(value));
+    /// <summary>
+    /// 輸出包含方法與參數的模擬 App Server 通知。
+    /// </summary>
     void Notify(string method, object parameters) => Send(new { method, @params = parameters });
     while (await Console.In.ReadLineAsync() is { } line)
     {
@@ -275,8 +299,14 @@ sealed class FakeClient(Func<int, CancellationToken, Task<TurnResult>> run) : IA
     private int _turn;
     public int Threads { get; private set; }
     public AppServerTurnDiagnostics? LastTurnDiagnostics { get; private set; }
+    /// <summary>
+    /// 建立測試用 thread 識別碼，不啟動實際 App Server。
+    /// </summary>
     public Task<string> StartThreadAsync(string workspaceRoot, CancellationToken cancellationToken = default)
     { Threads++; return Task.FromResult("thread"); }
+    /// <summary>
+    /// 依測試情境產生模擬 turn 結果，不呼叫實際 AI。
+    /// </summary>
     public async Task<TurnResult> RunTurnAsync(string threadId, string prompt, JsonElement? outputSchema = null,
         AppServerOptions? options = null, CancellationToken cancellationToken = default)
     {

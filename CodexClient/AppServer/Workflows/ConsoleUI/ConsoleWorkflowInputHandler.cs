@@ -2,10 +2,14 @@ namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
 public sealed class ConsoleWorkflowInputHandler
 {
-    /// <summary>每批 AI 問答或需求決策確認提醒一次；無效輸入重問不重複通知。</summary>
+    /// <summary>
+    /// 每批 AI 問答或需求決策確認提醒一次；無效輸入重問不重複通知。
+    /// </summary>
     public bool EnableNotifications { get; init; } = true;
 
-    /// <summary>在主控台逐題取得 Workflow 所需的使用者回答。</summary>
+    /// <summary>
+    /// 在主控台逐題取得 Workflow 所需的使用者回答。
+    /// </summary>
     /// <param name="request">使用者輸入要求。</param>
     /// <param name="cancellationToken">用於取消等待輸入的權杖。</param>
     /// <returns>非同步回傳使用者回答集合。</returns>
@@ -31,6 +35,9 @@ public sealed class ConsoleWorkflowInputHandler
         return answers;
     }
 
+    /// <summary>
+    /// 輸出一般問答標題；需求決策確認時改以空行分隔。
+    /// </summary>
     private static void WriteHeader(AppServerWorkflowInputRequest request)
     {
         if (request.IsDecisionConfirmation)
@@ -42,6 +49,9 @@ public sealed class ConsoleWorkflowInputHandler
         ConsoleWorkflowOutput.WriteLine(request.Message);
     }
 
+    /// <summary>
+    /// 輸出問題，並在需求決策確認時區分標題與選項。
+    /// </summary>
     private static void WriteQuestion(string question, bool decisionConfirmation)
     {
         if (!decisionConfirmation)
@@ -58,6 +68,9 @@ public sealed class ConsoleWorkflowInputHandler
         }
     }
 
+    /// <summary>
+    /// 顯示輸入提示並讀取回答；需求決策確認僅接受 1 或 2。
+    /// </summary>
     private static async Task<string> ReadAnswerAsync(bool decisionConfirmation, CancellationToken cancellationToken)
     {
         string answer;
