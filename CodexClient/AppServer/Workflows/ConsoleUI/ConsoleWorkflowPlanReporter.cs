@@ -24,6 +24,10 @@ public sealed class ConsoleWorkflowPlanReporter
         string indent = new(' ', numberWidth + 2);
         for (int index = 0; index < steps.Count; index++)
         {
+            if (index >= 0)
+            {
+                ConsoleWorkflowOutput.WriteLine("---------------------------------", ConsoleColor.DarkGray);
+            }
             var step = steps[index];
             ConsoleWorkflowOutput.Write((index + 1).ToString($"D{numberWidth}") + "  ", ConsoleColor.DarkGray);
             ConsoleWorkflowOutput.WriteLine($"{step.Name} | Model：{step.Options.Model ?? "沿用 Codex 設定"} | 權限：{step.Options.Sandbox}");
