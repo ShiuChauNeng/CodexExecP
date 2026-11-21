@@ -3,10 +3,10 @@ using System.Text;
 
 namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
-/// <summary>以單行步驟的緊湊時間線輸出 Workflow 執行結果。</summary>
+/// <summary>以緊湊時間線輸出 Workflow 執行結果，並列出已確認需求決策。</summary>
 public sealed class ConsoleWorkflowResultReporter
 {
-    /// <summary>輸出流程結果與各次步驟紀錄；只有驗收結果顯示累計次數。</summary>
+    /// <summary>輸出流程結果、各次步驟紀錄與已確認需求決策；只有驗收結果顯示累計次數。</summary>
     /// <param name="result">要輸出的 Workflow 結果。</param>
     public void Report(AppServerWorkflowResult result)
     {
@@ -51,6 +51,18 @@ public sealed class ConsoleWorkflowResultReporter
             ConsoleWorkflowOutput.WriteLine("");
         }
         ConsoleWorkflowOutput.WriteLine("");
+        ReportDecisions(result.Decisions);
+    }
+
+    private static void ReportDecisions(IReadOnlyList<AppServerWorkflowDecision> decisions)
+    {
+        ConsoleWorkflowOutput.WriteLine($"已確認需求決策：{decisions.Count} 筆");
+        foreach (var decision in decisions)
+        {
+            ConsoleWorkflowOutput.WriteLine($"[{decision.Group}] 來源：{decision.StepName}，確認時間：{decision.ConfirmedAt.ToLocalTime():HH:mm:ss}", ConsoleColor.DarkGray);
+            ConsoleWorkflowOutput.WriteQuestionLine($"問題：{decision.Question}");
+            ConsoleWorkflowOutput.WriteLine($"回答：{decision.Answer}");
+        }
     }
 
     private static (string Text, ConsoleColor Color) GetStatus(AppServerWorkflowStepResult step)

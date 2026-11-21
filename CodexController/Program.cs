@@ -162,7 +162,7 @@ try
         Model = CodexModels.Gpt61Sol
     };
     var workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
-   
+
 
     Console.WriteLine($"測試工作區：{workspaceRoot}");
     Console.WriteLine("本次將建立或覆寫 DecisionDemo.Spec.md、DecisionDemo.Result.txt、DecisionDemo.Acceptance.md。");
@@ -236,17 +236,6 @@ try
 
     var resultReporter = new ConsoleWorkflowResultReporter();
     resultReporter.Report(result);
-
-    Console.WriteLine($"已確認需求決策：{result.Decisions.Count} 筆");
-    foreach (var decision in result.Decisions)
-    {
-        Console.WriteLine($"[{decision.Group}] 來源：{decision.StepName}，確認時間：{decision.ConfirmedAt.ToLocalTime():HH:mm:ss}");
-        Console.WriteLine($"問題：{decision.Question}");
-        Console.WriteLine($"回答：{decision.Answer}");
-    }
-    //Console.WriteLine($"原始規格：{Path.Combine(workspaceRoot, "DecisionDemo.Spec.md")}");
-    //Console.WriteLine($"實作結果：{Path.Combine(workspaceRoot, "DecisionDemo.Result.txt")}");
-    //Console.WriteLine($"驗收報表：{Path.Combine(workspaceRoot, "DecisionDemo.Acceptance.md")}");
 
 }
 catch (Exception ex)

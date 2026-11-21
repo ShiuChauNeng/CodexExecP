@@ -14,6 +14,8 @@ public sealed record AppServerWorkflowResult(
     /// </summary>
     public Exception? Error { get; init; }
 
-    /// <summary>本次執行已確認的需求決策快照，包含重跑或失敗步驟中已確認的紀錄。</summary>
+    /// <summary>
+    /// 本次執行已確認的需求決策快照，包含重跑或失敗步驟中已確認的紀錄。
+    /// </summary>
     public IReadOnlyList<AppServerWorkflowDecision> Decisions { get; init; } = [];
 }
