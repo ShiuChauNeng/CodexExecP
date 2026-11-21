@@ -202,6 +202,33 @@ Workflow 會逐步傳遞選項；App Server 即使共用 thread，下一步仍�
 重要產出應提供 `ValidateCompletionAsync`，實際檢查檔案、建置或業務條件。
 未設定驗證時，`Completed` 仍只是接受 AI 回報的完成狀態。
 
+## 流程名稱
+
+`CodexClient.Models.WorkflowNames` 提供 Spec、Plan、Design、Implement、Build、Test、Acceptance、CodingStyle、CodeReview、Refactor、Documentation 與 Report 常數。
+名稱只供識別，不會自動執行 Skill 或改變判定規則；驗收仍需使用 `AppServerAcceptanceStep`。
+多組步驟可以使用 `Create(scope, name)` 產生固定名稱；不自動編號，也不保證不同輸入組合必定唯一。
+
+```csharp
+string implementName = WorkflowNames.Create("FeatureA", WorkflowNames.Implement);
+string acceptanceName = WorkflowNames.Create("FeatureA", WorkflowNames.Acceptance);
+
+var implement = new AppServerWorkflowStep(implementName, "使用實作 Skill")
+{
+    RecordDecisionsTo = implementName,
+    ReadDecisionsFrom = [implementName]
+};
+var acceptance = new AppServerAcceptanceStep(acceptanceName, "依規格與已確認決策驗收")
+{
+    RetryStep = implementName,
+    ReadDecisionsFrom = [implementName]
+};
+```
+
+Step 名稱與 `RecordDecisionsTo` 可以相同，兩者用途獨立，不會互相衝突。
+同一個 Workflow 的步驟名稱必須唯一；決策群組可由多個步驟共用。
+即使群組名稱與步驟名稱相同，也不會自動讀取決策，仍需明確設定 `ReadDecisionsFrom`。
+步驟名稱與群組名稱均區分大小寫。
+
 ## 問答中的需求決策
 
 ```csharp

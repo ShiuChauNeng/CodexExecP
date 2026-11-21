@@ -22,9 +22,10 @@ try
             options.IncludeScopes = true;
         });
     });
-    ILogger logger = loggerFactory.CreateLogger(applicationId);
+
 
     // 啟動 Runner
+    // ILogger logger = loggerFactory.CreateLogger(applicationId);
     // var runner = new CodexExecRunner(logger);
 
     // Session 取得
@@ -149,7 +150,7 @@ try
     //}
 
 
-    string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
+
     await using var client = new CodexAppServerClient(logger: loggerFactory.CreateLogger<CodexAppServerClient>());
     await client.StartAsync(applicationId);
 
@@ -161,6 +162,7 @@ try
         Sandbox = CodexSandboxMode.WorkspaceWrite,
         Model = CodexModels.Gpt61Sol
     };
+    string workspaceRoot = @"C:\Users\User\Desktop\TestProj";
     var workflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync, reporter);
 
 
@@ -171,7 +173,7 @@ try
 
     workflow
         .Add(new AppServerWorkflowStep(
-            "Spec",
+            WorkflowNames.Spec,
             """
             這是獨立的需求決策測試。只建立或覆寫 DecisionDemo.Spec.md，內容如下：
             # 需求決策測試 Spec
@@ -183,7 +185,7 @@ try
             Options = writeOptions
         })
         .Add(new AppServerWorkflowStep(
-            "Implement",
+            WorkflowNames.Implement,
             """
             讀取 DecisionDemo.Spec.md。這是示範實作期間需求問答的測試，不需要產生程式碼。
             首次執行必須先用 state=needs_input 提問：
@@ -199,11 +201,11 @@ try
             """)
         {
             Options = writeOptions,
-            RecordDecisionsTo = "DecisionDemo",
-            ReadDecisionsFrom = ["DecisionDemo"]
+            RecordDecisionsTo = WorkflowNames.Implement,
+            ReadDecisionsFrom = [WorkflowNames.Implement]
         })
         .Add(new AppServerAcceptanceStep(
-            "Acceptance",
+            WorkflowNames.Acceptance,
             """
             讀取 DecisionDemo.Spec.md 與 DecisionDemo.Result.txt，驗收 NOT_FOUND_RESULT。
             驗收依據為原始 Spec，加上本輪 Prompt 附加的使用者已確認需求決策。
@@ -219,20 +221,18 @@ try
             FailureSeverity = FindingSeverity.Error,
             MaxInconclusiveRetries = 2,
             MaxFailures = 3,
-            RetryStep = "Implement",
+            RetryStep = WorkflowNames.Implement,
             RequiredCriterionIds = ["NOT_FOUND_RESULT"],
-            ReadDecisionsFrom = ["DecisionDemo"]
+            ReadDecisionsFrom = [WorkflowNames.Implement]
         })
         .Add(new AppServerWorkflowStep(
-            "Style",
+            WorkflowNames.CodingStyle,
             "只整理 DecisionDemo.Result.txt 的文字格式：移除多餘空白行，保留單行原始值與一個行尾換行。不得變更 ERROR／EMPTY 值，不修改 Spec 或驗收報表。")
         {
             Options = writeOptions
         });
 
     var result = await workflow.RunAsync();
-
-
 
     var resultReporter = new ConsoleWorkflowResultReporter();
     resultReporter.Report(result);
