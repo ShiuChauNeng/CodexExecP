@@ -193,6 +193,43 @@ Workflow 會逐步傳遞選項；App Server 即使共用 thread，下一步仍�
 
 ## 接受條件
 
+最終 `ConsoleWorkflowResultReporter` 會在流程未成功時，於步驟歷程前顯示停止步驟與原因：
+
+```text
+執行結果：失敗
+停止步驟：Acceptance
+停止原因：必要驗收項目仍無法判定，已達補查上限（2 次）。
+```
+
+`result.StopReason` 保留執行／驗證失敗、未解決 issues、驗收失敗達上限、補查達上限或分流失敗的原因。
+成功時為 null；停止原因獨立於 `result.Error`，因此補查達上限或 StopOnIssues 停止即使 Error 為 null，仍有可讀說明。
+Reporter 不自行推算重試上限；手動建立結果未提供 StopReason 時，退回 Error.Message，兩者皆無則顯示「未提供停止原因」。
+外部取消與流程設定錯誤仍依原有方式拋出例外，不會因此改為回傳結果。
+
+結果 Reporter 會在步驟歷程後、需求決策前，以橘色列出未解決問題並標示來源：
+
+```text
+未解決問題：
+[Implement] 測試資料庫無法連線，尚未驗證寫入功能。
+```
+
+只取各步驟最後一次執行的外層 `Execution.Issues`，名稱以區分大小寫方式比對；成功與停止的流程都會顯示。
+若最後一次執行沒有 issues，便不列出該步驟的舊問題；最後一次執行未取得任務結果時，也不回頭採用舊資料。
+有任務結果但後續驗證失敗時，仍列出該次回報的 issues。沒有問題時不顯示此區塊。
+這是 AI 最後回報的問題快照，不代表程式重新驗證過問題是否修復；不會合併驗收的 `data.findings`，也不改變流程判定。
+
+驗收退回修正的具體問題，則顯示在每次 `[需修正]` 紀錄下方，即使最後驗收通過也保留：
+
+```text
+02  Acceptance  [需修正] | 累計失敗 1 次
+    需修正問題：[Error] 結果與規格要求不符。
+03  Implement   [通過]
+04  Acceptance  [通過]   | 累計失敗 1 次
+```
+
+此處顯示該輪 `data.findings` 的嚴重程度與說明；Failed Check 若沒有對應 Finding，會以項目 ID 與證據補充。
+這些是當輪驗收歷程，不會因後續通過而移除，也不會列入最後的「未解決問題」區塊。
+
 - `Completed`：取得任務產出，而且選填的 `ValidateCompletionAsync` 已通過。
 - `HasIssues`：AI 回報尚未解決的問題；不是所有工具失敗的集合，也不直接代表驗收是否通過。
 - Step 的 `Succeeded`：一般步驟為 Completed 且沒有 issues；驗收 Step 為 Completed 且 Accepted。

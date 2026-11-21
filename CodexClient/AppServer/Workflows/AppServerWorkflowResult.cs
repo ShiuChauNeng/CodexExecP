@@ -15,6 +15,11 @@ public sealed record AppServerWorkflowResult(
     public Exception? Error { get; init; }
 
     /// <summary>
+    /// 流程停止的原因；成功完成時為 null，不依賴 Error 是否存在。
+    /// </summary>
+    public string? StopReason { get; init; }
+
+    /// <summary>
     /// 本次執行已確認的需求決策快照，包含重跑或失敗步驟中已確認的紀錄。
     /// </summary>
     public IReadOnlyList<AppServerWorkflowDecision> Decisions { get; init; } = [];

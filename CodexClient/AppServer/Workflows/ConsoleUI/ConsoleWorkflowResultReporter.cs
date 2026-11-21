@@ -4,12 +4,12 @@ using System.Text;
 namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
 /// <summary>
-/// 以緊湊時間線輸出 Workflow 執行結果，並列出已確認需求決策。
+/// 以緊湊時間線輸出 Workflow 執行結果，並列出未解決問題與已確認需求決策。
 /// </summary>
 public sealed class ConsoleWorkflowResultReporter
 {
     /// <summary>
-    /// 輸出流程結果、各次步驟紀錄與已確認需求決策；只有驗收結果顯示累計次數。
+    /// 輸出流程結果、停止原因、各次步驟紀錄、未解決問題與已確認需求決策；只有驗收結果顯示累計次數。
     /// </summary>
     /// <param name="result">要輸出的 Workflow 結果。</param>
     public void Report(AppServerWorkflowResult result)
@@ -19,6 +19,10 @@ public sealed class ConsoleWorkflowResultReporter
         ConsoleWorkflowOutput.Write("執行結果：");
         ConsoleWorkflowOutput.WriteLine(result.Succeeded ? "成功" : "失敗",
             result.Succeeded ? ConsoleColor.Green : ConsoleColor.Red);
+        if (!result.Succeeded)
+        {
+            ReportStopReason(result);
+        }
 
         var statuses = result.Steps.Select(GetStatus).ToArray();
         int nameWidth = result.Steps.Select(step => GetDisplayWidth(step.Name)).DefaultIfEmpty(0).Max();
@@ -53,9 +57,83 @@ public sealed class ConsoleWorkflowResultReporter
                 ConsoleWorkflowOutput.Write($" | 累計無法判定 {step.InconclusiveCount} 次", ConsoleColor.DarkGray);
             }
             ConsoleWorkflowOutput.WriteLine("");
+            ReportAcceptanceIssues(step, numberWidth + 2);
         }
         ConsoleWorkflowOutput.WriteLine("");
+        ReportIssues(result.Steps);
         ReportDecisions(result.Decisions);
+    }
+
+    /// <summary>
+    /// 在需修正的驗收紀錄下列出當輪 Findings，沒有對應 Finding 的失敗項目則以證據補充。
+    /// 這是當輪歷程，不代表後續驗收通過後仍未修復。
+    /// </summary>
+    private static void ReportAcceptanceIssues(AppServerWorkflowStepResult step, int indentation)
+    {
+        if (!step.Completed || step.AcceptanceDecision != AcceptanceDecision.NeedsRevision)
+        {
+            return;
+        }
+
+        var acceptance = step.GetData<AcceptanceResult>();
+        string prefix = new(' ', indentation);
+        foreach (var finding in acceptance.Findings)
+        {
+            ConsoleWorkflowOutput.WriteOrangeLine($"{prefix}需修正問題：[{finding.Severity}] {finding.Message}");
+        }
+
+        var describedCriteria = acceptance.Findings.Where(finding => finding.CriterionId is not null)
+            .Select(finding => finding.CriterionId)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var check in acceptance.Checks)
+        {
+            if (check.Status == AcceptanceCheckStatus.Failed && !describedCriteria.Contains(check.CriterionId))
+            {
+                ConsoleWorkflowOutput.WriteOrangeLine($"{prefix}需修正問題：[{check.CriterionId}] 驗收未通過；{check.Evidence}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 只列出各步驟最後一次執行回報的 issues，避免顯示重跑前的舊問題。
+    /// </summary>
+    private static void ReportIssues(IReadOnlyList<AppServerWorkflowStepResult> steps)
+    {
+        var latestStepsWithIssues = steps.GroupBy(step => step.Name, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .Where(step => step.HasIssues)
+            .ToArray();
+        if (latestStepsWithIssues.Length == 0)
+        {
+            return;
+        }
+
+        ConsoleWorkflowOutput.WriteOrangeLine("未解決問題：");
+        foreach (var step in latestStepsWithIssues)
+        {
+            foreach (string issue in step.Execution!.Issues)
+            {
+                ConsoleWorkflowOutput.WriteOrangeLine($"[{step.Name}] {issue}");
+            }
+        }
+        ConsoleWorkflowOutput.WriteLine("");
+    }
+
+    /// <summary>
+    /// 顯示停止步驟與原因；手動建立的結果未提供原因時，退回錯誤訊息或明確提示。
+    /// </summary>
+    private static void ReportStopReason(AppServerWorkflowResult result)
+    {
+        ConsoleWorkflowOutput.WriteLine($"停止步驟：{result.FailedStep ?? "未提供"}");
+        string reason = $"停止原因：{result.StopReason ?? result.Error?.Message ?? "未提供停止原因。"}";
+        if (result.Error is not null)
+        {
+            ConsoleWorkflowOutput.WriteLine(reason, ConsoleColor.Red);
+        }
+        else
+        {
+            ConsoleWorkflowOutput.WriteOrangeLine(reason);
+        }
     }
 
     /// <summary>

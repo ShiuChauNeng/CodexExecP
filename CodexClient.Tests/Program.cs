@@ -59,12 +59,14 @@ await CheckAsync("issues can be accepted without claiming issue-free success", a
     var result = await Workflow(new FakeClient((_, _) => Task.FromResult(Reply(issues: ["known issue"]))))
         .Add(new("step", "task")).RunAsync();
     Assert(result.Succeeded && result.Steps[0].Accepted && !result.Steps[0].Succeeded);
+    Assert(result.StopReason is null);
 });
 await CheckAsync("StopOnIssues rejects the step and skips subsequent steps", async () =>
 {
     var result = await Workflow(new FakeClient((_, _) => Task.FromResult(Reply(issues: ["known issue"]))))
         .Add(new("step", "task") { StopOnIssues = true }).Add(new("never", "task")).RunAsync();
     Assert(!result.Succeeded && !result.Steps[0].Accepted && result.Steps.Count == 1);
+    Assert(result.Error is null && result.StopReason!.Contains("known issue"));
 });
 await CheckAsync("validation failure retains AI result and diagnostics", async () =>
 {
@@ -74,6 +76,7 @@ await CheckAsync("validation failure retains AI result and diagnostics", async (
         .RunAsync();
     Assert(!result.Succeeded && !result.Steps[0].Completed && !result.Steps[0].Accepted);
     Assert(result.Steps[0].Execution is not null && result.Steps[0].Diagnostics.Count == 1);
+    Assert(result.StopReason!.Contains("build failed"));
 });
 await CheckAsync("waiting for answers pauses the execution budget", async () =>
 {
@@ -191,6 +194,7 @@ passed += await AcceptanceChecks.RunAsync(workspace);
 passed += await WorkflowRoutingChecks.RunAsync(workspace);
 passed += await AcceptanceStepChecks.RunAsync(workspace);
 passed += await WorkflowDecisionChecks.RunAsync(workspace);
+passed += await WorkflowResultChecks.RunAsync(workspace);
 passed += await ConsoleProgressChecks.RunAsync();
 Console.WriteLine($"Passed {passed} checks.");
 

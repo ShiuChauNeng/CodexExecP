@@ -99,6 +99,7 @@ internal static class WorkflowRoutingChecks
             var error = new InvalidOperationException("manual review required");
             var result = await Workflow(new()).Add(new("A", "A") { NextStep = _ => throw error }).RunAsync();
             Assert(!result.Succeeded && ReferenceEquals(result.Error, error) && result.Steps[0].Completed);
+            Assert(result.StopReason == "步驟分流失敗：manual review required");
         });
         await Check("failed execution never invokes routing", async () =>
         {

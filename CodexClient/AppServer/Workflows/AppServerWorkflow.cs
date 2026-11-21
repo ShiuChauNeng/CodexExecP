@@ -168,8 +168,11 @@ public sealed class AppServerWorkflow
             // 如果步驟未被接受，則停止 Workflow 並回傳結果。
             if (!taskAccepted)
             {
+                string reason = result.Error is not null
+                    ? $"步驟執行或驗證失敗：{result.Error.Message}"
+                    : $"步驟有未解決問題：{string.Join("；", result.Execution!.Issues)}";
                 progress.Update(AppServerWorkflowStatus.Stopped, $"Workflow 停止於 {step.Name}。", step.Name, result.ThreadId);
-                return Finish(false, step.Name, results, threads, result.Error);
+                return Finish(false, step.Name, results, threads, result.Error, reason);
             }
 
             if (step.Thread.Mode is AppServerThreadMode.Create or AppServerThreadMode.GetOrCreate)
@@ -192,10 +195,9 @@ public sealed class AppServerWorkflow
                         continue;
                     }
 
-                    progress.Update(AppServerWorkflowStatus.Stopped,
-                        $"{step.Name} 無法完成驗收，已達補查上限（{acceptance.MaxInconclusiveRetries} 次），需要確認。",
-                        step.Name, result.ThreadId);
-                    return Finish(false, step.Name, results, threads);
+                    string reason = $"必要驗收項目仍無法判定，已達補查上限（{acceptance.MaxInconclusiveRetries} 次）。";
+                    progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name}：{reason}", step.Name, result.ThreadId);
+                    return Finish(false, step.Name, results, threads, stopReason: reason);
                 }
 
                 if (result.AcceptanceDecision == AcceptanceDecision.NeedsRevision)
@@ -203,8 +205,9 @@ public sealed class AppServerWorkflow
                     if (result.FailureCount >= acceptance.MaxFailures)
                     {
                         var error = new InvalidOperationException($"Acceptance step '{step.Name}' reached its failure limit ({acceptance.MaxFailures}). Failures: {result.FailureCount}.");
-                        progress.Update(AppServerWorkflowStatus.Stopped, error.Message, step.Name, result.ThreadId);
-                        return Finish(false, step.Name, results, threads, error);
+                        string reason = $"驗收不通過，已達失敗上限（{acceptance.MaxFailures} 次）。";
+                        progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name}：{reason}", step.Name, result.ThreadId);
+                        return Finish(false, step.Name, results, threads, error, reason);
                     }
 
                     nextIndex = indices[acceptance.RetryStep];
@@ -236,8 +239,9 @@ public sealed class AppServerWorkflow
             }
             catch (Exception ex)
             {
-                progress.Update(AppServerWorkflowStatus.Faulted, $"步驟分流失敗：{ex.Message}", step.Name, result.ThreadId);
-                return Finish(false, step.Name, results, threads, ex);
+                string reason = $"步驟分流失敗：{ex.Message}";
+                progress.Update(AppServerWorkflowStatus.Faulted, reason, step.Name, result.ThreadId);
+                return Finish(false, step.Name, results, threads, ex, reason);
             }
         }
         progress.Update(AppServerWorkflowStatus.Completed, $"Workflow 已完成，共 {results.Count} 個步驟。");
@@ -308,12 +312,14 @@ public sealed class AppServerWorkflow
     /// <param name="results">已執行的步驟結果。</param>
     /// <param name="threads">已建立的 thread 對應表。</param>
     /// <param name="error">導致 Workflow 結束的錯誤。</param>
+    /// <param name="stopReason">流程停止的原因；成功時省略。</param>
     /// <returns>Workflow 結果。</returns>
-    private static AppServerWorkflowResult Finish(bool succeeded, string? failedStep, List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads, Exception? error = null)
+    private static AppServerWorkflowResult Finish(bool succeeded, string? failedStep, List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads, Exception? error = null, string? stopReason = null)
         // 回傳後這次執行不再變更 threads，唯讀包裝即可，不需再複製。
         => new(succeeded, failedStep, Array.AsReadOnly(results.ToArray()), new ReadOnlyDictionary<string, string>(threads))
         {
             Error = error,
+            StopReason = stopReason,
             Decisions = Array.AsReadOnly(results.SelectMany(result => result.Decisions).ToArray())
         };
 }
