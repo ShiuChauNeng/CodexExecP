@@ -36,7 +36,7 @@ internal static class ConsoleProgressChecks
             if (process.ExitCode != 0 || !string.IsNullOrWhiteSpace(error) || output.Contains('\u001b') || output.Contains('\a') ||
                 output.Replace("\r\n", "\n").Contains('\r') || output.Contains("仍在等待") ||
                 lines.Count(line => line.Contains("[Spec] 等待 AI 執行結果")) != 4 ||
-                !lines.Any(line => line.Contains("累計 3 秒")) ||
+                !lines.Any(line => line.Contains("累計0分3秒")) ||
                 !lines.Any(line => line.Contains("[Spec] 等待使用者回答")) ||
                 !lines.Any(line => line.StartsWith("請輸入答案：demo")) ||
                 !lines.Last().Contains("Workflow 已完成"))
@@ -53,7 +53,44 @@ internal static class ConsoleProgressChecks
             }
         }
         Console.WriteLine("PASS: redirected progress preserves heartbeat records and separates questions without terminal controls");
-        return 1;
+        VerifyElapsedFormatting();
+        return 2;
+    }
+
+    /// <summary>
+    /// 驗證等待與一般進度皆以分秒顯示，並正確處理分鐘及小時邊界。
+    /// </summary>
+    private static void VerifyElapsedFormatting()
+    {
+        TextWriter originalOutput = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetOut(output);
+            var reporter = new ConsoleWorkflowProgressReporter { EnableNotifications = false };
+            var cases = new (double Seconds, string Expected)[]
+            {
+                (0, "累計0分0秒"), (59.9, "累計0分59秒"), (60, "累計1分0秒"),
+                (65, "累計1分5秒"), (3601, "累計60分1秒")
+            };
+            foreach (var item in cases)
+            {
+                output.GetStringBuilder().Clear();
+                var progress = new AppServerWorkflowProgress(DateTimeOffset.Now, AppServerWorkflowStatus.Running,
+                    "Spec", "demo", "等待 AI 執行結果。", TimeSpan.FromSeconds(item.Seconds));
+                reporter.Report(progress);
+                reporter.Report(progress with { Status = AppServerWorkflowStatus.StepCompleted, Message = "步驟完成。" });
+                if (output.ToString().Split(item.Expected, StringSplitOptions.None).Length != 3)
+                {
+                    throw new Exception($"Expected elapsed format {item.Expected} in both waiting and completion output.");
+                }
+            }
+        }
+        finally
+        {
+            Console.SetOut(originalOutput);
+        }
+        Console.WriteLine("PASS: elapsed time uses total minutes and remaining seconds in waiting and completion output");
     }
 
     /// <summary>
