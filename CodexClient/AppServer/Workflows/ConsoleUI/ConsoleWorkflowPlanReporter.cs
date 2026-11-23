@@ -31,6 +31,7 @@ public sealed class ConsoleWorkflowPlanReporter
             var step = steps[index];
             ConsoleWorkflowOutput.Write((index + 1).ToString($"D{numberWidth}") + "  ", ConsoleColor.DarkGray);
             ConsoleWorkflowOutput.WriteLine($"{step.Name} | Model：{step.Options.Model ?? "沿用 Codex 設定"} | 權限：{step.Options.Sandbox}");
+            ConsoleWorkflowOutput.WriteLine($"{indent}速度：{step.Options.ServiceTier?.ToString() ?? "沿用 thread 設定"}");
             ConsoleWorkflowOutput.WriteLine($"{indent}推理：{step.Options.ReasoningEffort?.ToString() ?? "沿用 thread 設定"} | 網路：{GetNetworkAccess(step.Options)} | issues：{(step.StopOnIssues ? "停止" : "允許繼續")}");
             if (step.Thread.Mode != AppServerThreadMode.PerStep)
             {

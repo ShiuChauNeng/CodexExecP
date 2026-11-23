@@ -204,6 +204,18 @@ public sealed class CodexExecRunner
             arguments.Add($"model_reasoning_effort=\"{value}\"");
         }
 
+        if (options.ServiceTier is { } tier)
+        {
+            string value = tier switch
+            {
+                CodexServiceTier.Standard => "default",
+                CodexServiceTier.Fast => "fast",
+                _ => throw new ArgumentOutOfRangeException(nameof(options.ServiceTier))
+            };
+            arguments.Add("-c");
+            arguments.Add($"service_tier=\"{value}\"");
+        }
+
         if (options.SessionId is not null)
         {
             if (options.OutputSchemaPath is not null)

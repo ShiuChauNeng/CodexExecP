@@ -37,6 +37,12 @@ public sealed record AppServerOptions
     public CodexReasoningEffort? ReasoningEffort { get; init; }
 
     /// <summary>
+    /// 服務速度；Fast 請求加速，Standard 明確使用一般速度，null 不覆寫 thread 的服務速度。
+    /// 加速可能增加額度或點數用量，實際支援依模型與帳號而定。
+    /// </summary>
+    public CodexServiceTier? ServiceTier { get; init; }
+
+    /// <summary>
     /// App Server 使用的沙箱模式。
     /// </summary>
     public CodexSandboxMode Sandbox { get; init; } = CodexSandboxMode.ReadOnly;
@@ -74,6 +80,11 @@ public sealed record AppServerOptions
         if (!Enum.IsDefined(Sandbox))
         {
             throw new ArgumentOutOfRangeException(nameof(Sandbox));
+        }
+
+        if (ServiceTier is { } tier && !Enum.IsDefined(tier))
+        {
+            throw new ArgumentOutOfRangeException(nameof(ServiceTier));
         }
 
         if (NetworkAccess is not null && Sandbox != CodexSandboxMode.WorkspaceWrite)
@@ -131,6 +142,15 @@ public sealed record AppServerOptions
                 CodexReasoningEffort.High => "high",
                 CodexReasoningEffort.XHigh => "xhigh",
                 _ => throw new ArgumentOutOfRangeException(nameof(ReasoningEffort))
+            };
+        }
+        if (ServiceTier is { } tier)
+        {
+            parameters["serviceTier"] = tier switch
+            {
+                CodexServiceTier.Standard => "default",
+                CodexServiceTier.Fast => "fast",
+                _ => throw new ArgumentOutOfRangeException(nameof(ServiceTier))
             };
         }
         return parameters;

@@ -52,6 +52,9 @@ App Server 共用 thread 的逐步權限，以及不支援模式的驗證；不�
 推理強度檢查透過模擬 App Server 驗證各 enum 的字串傳輸、未指定時省略 effort，
 以及無效 enum 值會在送出前被拒絕。
 
+服務速度檢查涵蓋 Fast、Standard 與未指定時的參數，App Server 共用 thread、exec Workflow 的 session resume，
+以及無效列舉值拒絕；使用模擬程序，不執行真實 AI，也不消耗加速額度。
+
 驗收契約檢查包含 Error/Warning/Info、缺少必要項目、未完成驗收、資料格式驗證，
 以及「驗收步驟正常完成，但產品需要修正」的 Workflow 模擬整合。
 

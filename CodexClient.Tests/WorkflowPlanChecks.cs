@@ -25,7 +25,7 @@ internal static class WorkflowPlanChecks
                 Options = new()
                 {
                     Model = "test-model", Sandbox = CodexSandboxMode.WorkspaceWrite,
-                    ReasoningEffort = CodexReasoningEffort.High, NetworkAccess = true
+                    ReasoningEffort = CodexReasoningEffort.High, NetworkAccess = true, ServiceTier = CodexServiceTier.Fast
                 },
                 Thread = AppServerThread.GetOrCreate("shared"),
                 RecordDecisionsTo = "FeatureA", ReadDecisionsFrom = ["FeatureA", "FeatureB"],
@@ -44,6 +44,7 @@ internal static class WorkflowPlanChecks
         Assert(output.Contains("01  Spec | Model：沿用 Codex 設定 | 權限：ReadOnly"));
         Assert(output.Contains("02  Implement | Model：test-model | 權限：WorkspaceWrite"));
         Assert(output.Contains("推理：High | 網路：允許 | issues：停止"));
+        Assert(output.Contains("速度：Fast") && output.Contains("速度：沿用 thread 設定"));
         Assert(output.Contains("推理：沿用 thread 設定") && output.Contains("網路：禁止（預設）"));
         Assert(output.Contains("決策：記錄至 FeatureA | 讀取 FeatureA、FeatureB"));
         Assert(output.Contains("Thread：GetOrCreate（shared）") && output.Contains("Thread：Use（shared）"));

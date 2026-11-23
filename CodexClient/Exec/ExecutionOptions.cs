@@ -25,6 +25,12 @@ public sealed class ExecutionOptions
     public CodexReasoningEffort? ReasoningEffort { get; init; }
 
     /// <summary>
+    /// 服務速度；Fast 請求加速，Standard 使用一般速度，null 沿用 Codex 設定。
+    /// 加速可能增加額度或點數用量，實際支援依模型與帳號而定。
+    /// </summary>
+    public CodexServiceTier? ServiceTier { get; init; }
+
+    /// <summary>
     /// Codex 可使用的沙箱模式。
     /// </summary>
     public CodexSandboxMode Sandbox { get; init; } = CodexSandboxMode.ReadOnly;
@@ -73,6 +79,11 @@ public sealed class ExecutionOptions
         if (!Enum.IsDefined(Sandbox))
         {
             throw new ArgumentOutOfRangeException(nameof(Sandbox));
+        }
+
+        if (ServiceTier is { } tier && !Enum.IsDefined(tier))
+        {
+            throw new ArgumentOutOfRangeException(nameof(ServiceTier));
         }
 
         if (NetworkAccess is not null && Sandbox != CodexSandboxMode.WorkspaceWrite)

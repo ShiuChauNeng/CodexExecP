@@ -94,7 +94,7 @@ internal static class ConsoleProgressChecks
                 {
                     StepDuration = TimeSpan.FromSeconds(65)
                 });
-                if (!output.ToString().Contains("本次耗時1分5秒，累計3分5秒"))
+                if (!output.ToString().Contains("本次步驟耗時1分5秒，累計3分5秒"))
                 {
                     throw new Exception($"Missing separate step and workflow duration for {status}.");
                 }

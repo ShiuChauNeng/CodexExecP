@@ -177,6 +177,32 @@ PromptFactory 與 NextStep 收到固定快照，後續執行不會改變已保�
 返回 Use(key) 則繼續同一個 thread。Create 必須在宣告順序中先於 Use，
 實際執行路徑也必須先執行 Create；跳過必要的 Create 時，Use 會回報錯誤。
 
+## 服務速度（Fast 模式）
+
+App Server 與 Codex exec 共用 `CodexClient.Models.CodexServiceTier`，可逐步設定，與 Model／ReasoningEffort 分開：
+
+```csharp
+Options = new AppServerOptions
+{
+    Model = CodexModels.Gpt61Sol,
+    Sandbox = CodexSandboxMode.WorkspaceWrite,
+    ReasoningEffort = CodexReasoningEffort.High,
+    ServiceTier = CodexServiceTier.Fast
+};
+```
+
+- `Fast`：請求加速模式；App Server 傳送 `serviceTier="fast"`，exec 傳送 `-c service_tier="fast"`。
+- `Standard`：明確使用一般速度，傳送值為 `default`，可將共用 thread 從 Fast 切回一般速度。
+- `null`（預設）：不傳送覆寫；App Server 沿用 thread 的服務速度，exec 沿用 Codex 設定。null 不代表關閉 Fast。
+- App Server 的 `serviceTier` 也會影響同一 thread 後續 turns；若下一步需要一般速度，請明確設定 Standard。
+- `ExecutionOptions.ServiceTier` 使用相同列舉，exec Workflow 複製選項與 session resume 時也會保留。
+- 執行前摘要會顯示每步的速度設定。未指定時只標示沿用設定，不宣稱實際速度。
+
+Fast 不會自行降低推理強度，但可能增加額度或點數用量；實際可用性與速度依模型、帳號及服務狀態而定。
+本工具只傳送速度偏好，不保證服務端一定採用或達到固定加速倍率。
+實作已核對本機 Codex CLI 0.167.1 產生的 App Server Schema；使用其他版本時需確認支援 `turn/start.serviceTier`。
+參考：[官方速度說明](https://learn.chatgpt.com/docs/agent-configuration/speed)、[Codex 設定參考](https://developers.openai.com/codex/config-reference)。
+
 ## 推理強度
 
 App Server 與 Exec 共用 `CodexClient.CodexReasoningEffort` 和 `CodexClient.CodexSandboxMode`，

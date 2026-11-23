@@ -189,6 +189,7 @@ public sealed class CodexWorkflow
             SessionId = sessionId,
             Model = source.Model,
             ReasoningEffort = source.ReasoningEffort,
+            ServiceTier = source.ServiceTier,
             Sandbox = source.Sandbox,
             NetworkAccess = source.NetworkAccess,
             OutputSchemaPath = source.OutputSchemaPath,
