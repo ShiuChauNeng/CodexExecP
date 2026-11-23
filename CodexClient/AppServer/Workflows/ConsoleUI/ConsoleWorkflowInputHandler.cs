@@ -84,7 +84,7 @@ public sealed class ConsoleWorkflowInputHandler
                 answer = answer.Trim();
                 if (answer is not ("1" or "2"))
                 {
-                    ConsoleWorkflowOutput.WriteQuestionLine("請輸入 1（不記錄）或 2（確認記錄）。");
+                    ConsoleWorkflowOutput.WriteQuestionLine("請輸入 1（確認記錄）或 2（不記錄）。");
                 }
             }
         }

@@ -35,7 +35,8 @@ internal static class WorkflowDecisionChecks
                     return Answer("  RAW-APPROVED  ", "RAW-PRIVATE");
                 }
                 Assert(request.DecisionGroup == "FeatureA" && request.Questions.Count == 1);
-                return Answer(++confirmations == 1 ? "2" : "1");
+                Assert(request.Questions[0].Contains("1 記錄　2 不記錄"));
+                return Answer(++confirmations == 1 ? "1" : "2");
             }).Add(new("Writer", "[ask:A]") { RecordDecisionsTo = "FeatureA", MaxInputRounds = 1 })
                 .Add(new AppServerAcceptanceStep("Reader", "[review]") { ReadDecisionsFrom = ["FeatureA"], RetryStep = "Writer" })
                 .Add(new("Style", "[style]"))
@@ -55,7 +56,7 @@ internal static class WorkflowDecisionChecks
         await Check("declining to record does not publish ordinary answers", async () =>
         {
             var client = new Client();
-            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "1" : "RAW-SKIPPED"))
+            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "2" : "RAW-SKIPPED"))
                 .Add(new("Writer", "[ask:A]") { RecordDecisionsTo = "FeatureA" })
                 .Add(new("Reader", "[read]") { ReadDecisionsFrom = ["FeatureA"] }).RunAsync();
             Assert(result.Succeeded && result.Decisions.Count == 0);
@@ -64,7 +65,7 @@ internal static class WorkflowDecisionChecks
         await Check("decision groups remain separate and readers may request multiple groups", async () =>
         {
             var client = new Client();
-            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "2" : "RAW-" + request.StepName))
+            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "1" : "RAW-" + request.StepName))
                 .Add(new("A", "[ask:A]") { RecordDecisionsTo = "FeatureA" })
                 .Add(new("B", "[ask:B]") { RecordDecisionsTo = "FeatureB" })
                 .Add(new("ReaderA", "[read:A]") { ReadDecisionsFrom = ["FeatureA"] })
@@ -78,7 +79,7 @@ internal static class WorkflowDecisionChecks
         {
             var client = new Client();
             int rounds = 0;
-            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "2" : $"RAW-{++rounds}"))
+            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "1" : $"RAW-{++rounds}"))
                 .Add(new("Writer", "[ask:A]")
                 {
                     RecordDecisionsTo = "FeatureA",
@@ -95,7 +96,7 @@ internal static class WorkflowDecisionChecks
         {
             var client = new Client { ReviewFailures = 1 };
             int rounds = 0;
-            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "2" : $"RAW-{++rounds}"))
+            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "1" : $"RAW-{++rounds}"))
                 .Add(new("Writer", "[ask:A]") { RecordDecisionsTo = "FeatureA", Thread = AppServerThread.New })
                 .Add(new AppServerAcceptanceStep("Review", "[review]")
                     { ReadDecisionsFrom = ["FeatureA"], RetryStep = "Writer", Thread = AppServerThread.New }).RunAsync();
@@ -108,7 +109,7 @@ internal static class WorkflowDecisionChecks
         {
             var client = new Client();
             bool skipWriter = false;
-            var workflow = Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "2" : "RAW-FIRST-RUN"))
+            var workflow = Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "1" : "RAW-FIRST-RUN"))
                 .Add(new("Route", "route") { NextStep = _ => skipWriter ? "Reader" : "Writer" })
                 .Add(new("Writer", "[ask:A]") { RecordDecisionsTo = "FeatureA" })
                 .Add(new("Reader", "[read]") { ReadDecisionsFrom = ["FeatureA"] });
@@ -145,7 +146,7 @@ internal static class WorkflowDecisionChecks
         await Check("confirmed records remain available if the implementation subsequently fails", async () =>
         {
             var client = new Client { FailAfterAnswer = true };
-            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "2" : "RAW"))
+            var result = await Workflow(client, (request, _) => Answer(request.IsDecisionConfirmation ? "1" : "RAW"))
                 .Add(new("Writer", "[ask:A]") { RecordDecisionsTo = "FeatureA" }).RunAsync();
             Assert(!result.Succeeded && result.Error is IOException && result.Decisions.Count == 1 && result.Steps[0].Decisions.Count == 1);
         });
@@ -158,7 +159,7 @@ internal static class WorkflowDecisionChecks
                 if (request.IsDecisionConfirmation)
                 {
                     cancellation.Cancel();
-                    return Answer("2");
+                    return Answer("1");
                 }
                 return Answer("RAW");
             }).Add(new("Writer", "[ask:A]") { RecordDecisionsTo = "FeatureA" });
@@ -178,7 +179,7 @@ internal static class WorkflowDecisionChecks
             var client = new Client();
             var result = await Workflow(client, (request, _) => request.IsDecisionConfirmation ? lateChoice.Task : Answer("RAW"))
                 .Add(new("Writer", "[ask:A]") { RecordDecisionsTo = "FeatureA", InputTimeout = TimeSpan.FromSeconds(1) }).RunAsync();
-            lateChoice.SetResult(["2"]);
+            lateChoice.SetResult(["1"]);
             Assert(!result.Succeeded && result.Error is TimeoutException && result.Decisions.Count == 0 && client.Prompts.Count == 1);
         });
         await Check("invalid group settings fail before calling the AI", async () =>
@@ -211,13 +212,13 @@ internal static class WorkflowDecisionChecks
             using var output = new StringWriter();
             try
             {
-                Console.SetIn(new StringReader("  RAW  \ninvalid\n 2 \n"));
+                Console.SetIn(new StringReader("  RAW  \ninvalid\n 1 \n"));
                 Console.SetOut(output);
                 var handler = new ConsoleWorkflowInputHandler { EnableNotifications = false };
                 var request = new AppServerWorkflowInputRequest("Writer", "thread", "turn", "message", ["question"]);
                 var ordinary = await handler.AnswerAsync(request);
                 var confirmed = await handler.AnswerAsync(request with { IsDecisionConfirmation = true, DecisionGroup = "FeatureA" });
-                Assert(ordinary[0] == "  RAW  " && confirmed[0] == "2" && output.ToString().Contains("請輸入 1"));
+                Assert(ordinary[0] == "  RAW  " && confirmed[0] == "1" && output.ToString().Contains("請輸入 1（確認記錄）或 2（不記錄）。"));
             }
             finally
             {

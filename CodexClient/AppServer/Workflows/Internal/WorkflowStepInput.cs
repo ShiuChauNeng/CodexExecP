@@ -105,7 +105,7 @@ internal sealed class WorkflowStepInput
                 : "是否記錄為需求補充或變更？";
             var confirmation = new AppServerWorkflowInputRequest(_step.Name, request.ThreadId, request.TurnId,
                 $"確認第 {index + 1}/{request.Questions.Count} 題的回答。",
-                [$"{confirmationQuestion}\n1 不記錄　2 記錄"])
+                [$"{confirmationQuestion}\n1 記錄　2 不記錄"])
             {
                 IsDecisionConfirmation = true,
                 DecisionGroup = group
@@ -114,9 +114,9 @@ internal sealed class WorkflowStepInput
             cancellationToken.ThrowIfCancellationRequested();
             if (choice is null || choice.Count != 1 || choice[0] is not ("1" or "2"))
             {
-                throw new ArgumentException("Decision confirmation requires one answer: 1 (skip) or 2 (record).");
+                throw new ArgumentException("Decision confirmation requires one answer: 1 (record) or 2 (skip).");
             }
-            if (choice[0] == "2")
+            if (choice[0] == "1")
             {
                 _decisions.Add(new(group, _step.Name, request.ThreadId, request.TurnId,
                     request.Message, request.Questions[index], answerSnapshot[index], DateTimeOffset.UtcNow));

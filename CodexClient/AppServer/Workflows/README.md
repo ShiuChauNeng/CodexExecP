@@ -332,7 +332,7 @@ var acceptance = new AppServerAcceptanceStep("Acceptance", "依原始 Spec 與�
 };
 ```
 
-- `RecordDecisionsTo` 未設定時維持原有問答，不額外詢問。設定後，每個回答都會再確認一次：1 不記錄，2 明確確認為需求補充或變更。
+- `RecordDecisionsTo` 未設定時維持原有問答，不額外詢問。設定後，每個回答都會再確認一次：1 明確確認為需求補充或變更，2 不記錄。
 - C# 保留原始說明、問題、回答、來源步驟、thread、turn 與確認時間，不由 AI 摘要或自行判定為變更，也不直接修改 Spec。
 - `ReadDecisionsFrom` 支援多個群組，區分大小寫；執行前附加該群組本次 Run 的已確認紀錄，重跑與驗收補查也取得最新紀錄。
 - 紀錄只修訂其對應事項；相互衝突或語意不明時，模型應提問確認，不自動採用「最後一筆覆蓋全部規格」。

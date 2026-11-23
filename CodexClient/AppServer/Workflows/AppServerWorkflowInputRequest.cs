@@ -16,7 +16,7 @@ public sealed record AppServerWorkflowInputRequest(
     IReadOnlyList<string> Questions)
 {
     /// <summary>
-    /// 是否為需求決策確認；為 true 時只有一個問題，回答 "1" 不記錄、"2" 明確確認記錄。
+    /// 是否為需求決策確認；為 true 時只有一個問題，回答 "1" 明確確認記錄、"2" 不記錄。
     /// </summary>
     public bool IsDecisionConfirmation { get; init; }
 
