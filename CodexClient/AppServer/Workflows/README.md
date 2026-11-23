@@ -357,6 +357,40 @@ Console 進度介面只在 Workflow 完成、停止、失敗或取消時通知�
 - 不自動修改終端機設定；輸出導向檔案或非互動環境時不通知，通知失敗也不影響執行結果。
 - 可分別設定 `new ConsoleWorkflowProgressReporter { EnableNotifications = false }` 與 `new ConsoleWorkflowInputHandler { EnableNotifications = false }` 關閉通知。
 
+## 檢查實際送出的 Prompt 與參數
+
+完整請求使用獨立的 `CodexClient.AppServer.Requests` Log 分類，以 Debug 等級輸出。
+Program 的 `logRequests` 預設 false，需要查看時改為 true；一般啟動、執行與釋放 Log 不受此開關影響。
+其他呼叫端可依下列方式設定：
+
+```csharp
+bool logRequests = false;
+using var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.SetMinimumLevel(LogLevel.Information);
+    builder.AddFilter(CodexAppServerClient.RequestLogCategory, logRequests ? LogLevel.Debug : LogLevel.None);
+    builder.AddSimpleConsole();
+});
+
+await using var client = new CodexAppServerClient(
+    logger: loggerFactory.CreateLogger<CodexAppServerClient>(),
+    requestLogger: loggerFactory.CreateLogger(CodexAppServerClient.RequestLogCategory));
+```
+
+未提供 requestLogger 時不會輸出完整請求；僅將一般 Log 調成 Debug／Trace 也不會開啟它。
+每次送出 `turn/start` 前，`CodexAppServerClient.LogTurnRequest()` 會將內容分成兩部分顯示：
+
+- `Prompt:`：直接輸出最終 input 文字，保留中文與原本換行，不再包進外層 JSON 字串，也不截斷內容。
+- `Parameters (excluding input):`：以縮排 JSON 顯示 method 與不含 input 的 params，包括 threadId、outputSchema、Model、推理強度、服務速度與 sandboxPolicy（以當輪實際存在的欄位為準）。
+
+問答資料序列化時保留中文並縮排；需求決策與驗收回饋的 JSON 也保留中文。
+JSON 字串本身必要的跳脫仍會保留，不會將使用者原文中的字面值 `\uXXXX` 或 `\n` 自行解碼。
+只有 Debug 啟用時才建立顯示用參數 JSON；它排除 input 以避免重複顯示，不會修改實際送出的參數。
+
+這個位置涵蓋 TaskRunner 自動附加的指令、需求決策、驗收回饋與 Schema；問答後續 turn、修正與補查皆各自記錄。
+Log 記錄的是送出前的請求內容，不代表服務端已成功接收；不包含傳輸層後續產生的 JSON-RPC id，
+也不包含 App Server 自行載入的 AGENTS／Skill、既有 thread 歷史或服務端額外指令。
+
 ## 診斷紀錄
 
 `stepResult.Diagnostics` 保留每個 turn 的原始 `item/completed` 與 `error` 事件，

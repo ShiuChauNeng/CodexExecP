@@ -192,6 +192,7 @@ await CheckAsync("transport cancellation closes the client and preserves partial
 passed += await NetworkAccessChecks.RunAsync(workspace);
 passed += await ReasoningEffortChecks.RunAsync(workspace);
 passed += await ServiceTierChecks.RunAsync(workspace);
+passed += await RequestLoggingChecks.RunAsync(workspace);
 passed += await AcceptanceChecks.RunAsync(workspace);
 passed += await WorkflowRoutingChecks.RunAsync(workspace);
 passed += await AcceptanceStepChecks.RunAsync(workspace);
@@ -283,7 +284,11 @@ static async Task ServeAsync()
                 Notify("item/completed", new { threadId = "thread", turnId = "1", item = new { type = "commandExecution", status = "completed", exitCode = 0 } });
                 string response = Reply().Response;
                 string input = root.GetProperty("params").GetProperty("input")[0].GetProperty("text").GetString()!;
-                if (input.Contains("network-check") || input.Contains("reasoning-check") || input.Contains("service-tier-check"))
+                if (input.Contains("[request-log-question]"))
+                {
+                    response = Reply("needs_input").Response;
+                }
+                if (input.Contains("network-check") || input.Contains("reasoning-check") || input.Contains("service-tier-check") || input.Contains("request-debug-check"))
                 {
                     response = JsonSerializer.Serialize(new
                     {

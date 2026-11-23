@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 
 namespace CodexClient.AppServer;
 
@@ -11,7 +13,11 @@ public sealed class CodexTaskRunner(IAppServerClient client)
 {
     // Fields
     private readonly IAppServerClient _client = client ?? throw new ArgumentNullException(nameof(client));
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+        WriteIndented = true
+    };
     private static readonly JsonElement OutputSchema = JsonSerializer.Deserialize<JsonElement>(
         """
         {
@@ -134,7 +140,7 @@ public sealed class CodexTaskRunner(IAppServerClient client)
                         throw new ArgumentException("Provide one nonempty answer for each question.", nameof(answerQuestionsAsync));
                     }
 
-                    input = "使用者回答如下，請繼續原任務：\n" + JsonSerializer.Serialize(reply.Questions.Select((question, index) => new { question, answer = answers[index] }));
+                    input = "使用者回答如下，請繼續原任務：\n" + JsonSerializer.Serialize(reply.Questions.Select((question, index) => new { question, answer = answers[index] }), JsonOptions);
                     continue;
 
                 case "completed":

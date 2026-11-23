@@ -13,10 +13,12 @@ stopwatch.Start();
 try
 {
     var applicationId = "CodexController";
+    bool logRequests = false;
     // 設定 Log
     using ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
     {
         builder.SetMinimumLevel(LogLevel.Error);
+        builder.AddFilter(CodexAppServerClient.RequestLogCategory, logRequests ? LogLevel.Debug : LogLevel.None);
         builder.AddSimpleConsole(options =>
         {
             options.IncludeScopes = true;
@@ -151,7 +153,9 @@ try
 
 
 
-    await using var client = new CodexAppServerClient(logger: loggerFactory.CreateLogger<CodexAppServerClient>());
+    await using var client = new CodexAppServerClient(
+        logger: loggerFactory.CreateLogger<CodexAppServerClient>(),
+        requestLogger: loggerFactory.CreateLogger(CodexAppServerClient.RequestLogCategory));
     await client.StartAsync(applicationId);
 
     // 需求決策測試：原始 Spec 不變，由使用者確認的決策補充驗收依據。

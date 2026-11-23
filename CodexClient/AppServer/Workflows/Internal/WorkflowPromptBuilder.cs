@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using CodexClient.Acceptance;
 
 namespace CodexClient.AppServer.Workflows.Internal;
@@ -8,6 +10,11 @@ namespace CodexClient.AppServer.Workflows.Internal;
 /// </summary>
 internal static class WorkflowPromptBuilder
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+    };
+
     /// <summary>
     /// 組合步驟指令、已確認需求決策、驗收回饋與必要項目清單。
     /// </summary>
@@ -23,7 +30,7 @@ internal static class WorkflowPromptBuilder
         if (relevantDecisions.Length > 0)
         {
             prompt += "\n\n以下是使用者已確認的需求補充或變更，僅修訂其對應事項，其餘仍以原始規格為準。" +
-                "若決策彼此衝突或含義不明，請提問確認，不可自行擴大變更範圍：\n" + JsonSerializer.Serialize(relevantDecisions);
+                "若決策彼此衝突或含義不明，請提問確認，不可自行擴大變更範圍：\n" + JsonSerializer.Serialize(relevantDecisions, JsonOptions);
         }
         if (acceptanceFeedback is not null)
         {
@@ -42,7 +49,7 @@ internal static class WorkflowPromptBuilder
                     inconclusiveCount = acceptanceFeedback.InconclusiveCount,
                     issues = acceptanceFeedback.Execution!.Issues,
                     acceptance = acceptanceFeedback.Execution!.Data
-                });
+                }, JsonOptions);
         }
         if (step is AppServerAcceptanceStep acceptanceForPrompt)
         {

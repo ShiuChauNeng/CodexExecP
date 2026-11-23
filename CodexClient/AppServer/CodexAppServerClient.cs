@@ -1,6 +1,8 @@
 ﻿
 using System.Text;
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -8,9 +10,15 @@ namespace CodexClient.AppServer;
 
 public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 {
+    /// <summary>
+    /// 完整 turn/start 請求的建議 Log 分類；只有額外提供 requestLogger 並啟用 Debug 時才會輸出。
+    /// </summary>
+    public const string RequestLogCategory = "CodexClient.AppServer.Requests";
+
     // Fields
     private readonly AppServerConnection _connection;
     private readonly ILogger _logger;
+    private readonly ILogger _requestLogger;
     private readonly SemaphoreSlim _turnLock = new(1, 1);
     private AppServerTurnDiagnostics? _lastTurnDiagnostics;
 
@@ -36,9 +44,13 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
     /// <summary>
     /// 建立 App Server 用戶端及其底層連線。
     /// </summary>
-    public CodexAppServerClient(string? executablePath = null, ILogger<CodexAppServerClient>? logger = null)
+    /// <param name="executablePath">選填的 Codex 執行檔路徑。</param>
+    /// <param name="logger">一般啟動、執行與釋放紀錄的記錄器。</param>
+    /// <param name="requestLogger">選填的完整請求記錄器；未提供時不輸出請求內容。</param>
+    public CodexAppServerClient(string? executablePath = null, ILogger<CodexAppServerClient>? logger = null, ILogger? requestLogger = null)
     {
         _logger = logger ?? NullLogger<CodexAppServerClient>.Instance;
+        _requestLogger = requestLogger ?? NullLogger.Instance;
         _connection = new AppServerConnection(executablePath, _logger);
     }
 
@@ -239,6 +251,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
 
             try
             {
+                LogTurnRequest(threadId, prompt, parameters);
                 JsonElement result = await _connection.SendRequestAsync("turn/start", parameters, cancellationToken);
                 string turnId = result.GetProperty("turn").GetProperty("id").GetString() ?? throw new JsonException("Turn ID is missing.");
                 _logger.LogInformation("Codex turn started. TurnId: {TurnId}", turnId);
@@ -308,6 +321,27 @@ public sealed class CodexAppServerClient : IAsyncDisposable, IAppServerClient
             LastTurnDiagnostics = Snapshot();
             _turnLock.Release();
         }
+    }
+
+    /// <summary>
+    /// 僅在專用記錄器啟用 Debug 時，分別輸出原始 Prompt 與不含 input 的請求參數。
+    /// 顯示用參數另行建立，不改動實際請求。
+    /// </summary>
+    private void LogTurnRequest(string threadId, string prompt, Dictionary<string, object?> parameters)
+    {
+        if (!_requestLogger.IsEnabled(LogLevel.Debug))
+        {
+            return;
+        }
+
+        var settings = parameters.Where(pair => pair.Key != "input").ToDictionary(pair => pair.Key, pair => pair.Value);
+        string request = JsonSerializer.Serialize(new { method = "turn/start", @params = settings }, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        });
+        _requestLogger.LogDebug("Codex App Server request. ThreadId: {ThreadId}{NewLine}Prompt:{NewLine}{Prompt}{NewLine}Parameters (excluding input):{NewLine}{Request}",
+            threadId, Environment.NewLine, Environment.NewLine, prompt, Environment.NewLine, Environment.NewLine, request);
     }
 
     /// <summary>
