@@ -85,6 +85,20 @@ internal static class ConsoleProgressChecks
                     throw new Exception($"Expected elapsed format {item.Expected} in both waiting and completion output.");
                 }
             }
+            foreach (var status in new[] { AppServerWorkflowStatus.StepCompleted, AppServerWorkflowStatus.StepFailed,
+                AppServerWorkflowStatus.NeedsRevision, AppServerWorkflowStatus.Validating })
+            {
+                output.GetStringBuilder().Clear();
+                reporter.Report(new AppServerWorkflowProgress(DateTimeOffset.Now, status,
+                    "Acceptance", "demo", "本輪步驟結束。", TimeSpan.FromSeconds(185))
+                {
+                    StepDuration = TimeSpan.FromSeconds(65)
+                });
+                if (!output.ToString().Contains("本次耗時1分5秒，累計3分5秒"))
+                {
+                    throw new Exception($"Missing separate step and workflow duration for {status}.");
+                }
+            }
         }
         finally
         {

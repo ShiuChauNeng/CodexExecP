@@ -1,4 +1,5 @@
 using CodexClient.Acceptance;
+using System.Diagnostics;
 
 namespace CodexClient.AppServer.Workflows.Internal;
 
@@ -47,6 +48,7 @@ internal sealed class WorkflowStepExecutor
         HashSet<string>? knownCriterionIds,
         AppServerWorkflowStepResult? acceptanceFeedback = null)
     {
+        var elapsed = Stopwatch.StartNew();
         string? threadId = null;
         TaskRunResult? execution = null;
         AcceptanceDecision? acceptanceDecision = null;
@@ -106,9 +108,11 @@ internal sealed class WorkflowStepExecutor
 
         cancellationToken.ThrowIfCancellationRequested();
         AppendLatestDiagnostics(threadId, previousDiagnostics, diagnostics);
+        elapsed.Stop();
 
         return new(step.Name, threadId, execution, error)
         {
+            Duration = elapsed.Elapsed,
             Diagnostics = Array.AsReadOnly(diagnostics.ToArray()),
             Decisions = Array.AsReadOnly(input.Decisions.ToArray()),
             AcceptanceDecision = acceptanceDecision

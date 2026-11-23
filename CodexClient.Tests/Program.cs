@@ -85,6 +85,7 @@ await CheckAsync("waiting for answers pauses the execution budget", async () =>
         .Add(new("step", "task") { ExecutionTimeout = TimeSpan.FromMilliseconds(300), InputTimeout = TimeSpan.FromSeconds(2) })
         .RunAsync();
     Assert(result.Succeeded);
+    Assert(result.Steps[0].Duration >= TimeSpan.FromMilliseconds(450));
 });
 await CheckAsync("execution budget accumulates across turns", async () =>
 {

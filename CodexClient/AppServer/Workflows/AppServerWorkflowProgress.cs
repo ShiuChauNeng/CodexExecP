@@ -29,6 +29,11 @@ public sealed record AppServerWorkflowProgress(
     bool IsHeartbeat = false)
 {
     /// <summary>
+    /// 步驟結束時的本次總耗時；其他進度為 null，與流程累計 Elapsed 分開。
+    /// </summary>
+    public TimeSpan? StepDuration { get; init; }
+
+    /// <summary>
     /// 只有執行中的階段提供定期提醒與同一行刷新，等待回答及結束狀態不包含在內。
     /// </summary>
     internal bool SupportsHeartbeat => Status is AppServerWorkflowStatus.Starting or AppServerWorkflowStatus.CreatingThread

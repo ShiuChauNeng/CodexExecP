@@ -64,7 +64,7 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         _waiting = null;
         _waitingLineKey = null;
         string name = progress.StepName ?? "Workflow";
-        string line = $"[{progress.Timestamp:HH:mm:ss}] [{name}] {progress.Message}（累計{FormatElapsed(progress.Elapsed)}）";
+        string line = $"[{progress.Timestamp:HH:mm:ss}] [{name}] {progress.Message}（{FormatTiming(progress)}）";
         if (!progress.IsHeartbeat && progress.Status is AppServerWorkflowStatus.NeedsRevision or AppServerWorkflowStatus.Cancelled)
         {
             ConsoleWorkflowOutput.WriteOrangeLine(line);
@@ -100,12 +100,20 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
 
         DateTimeOffset timestamp = Console.IsOutputRedirected ? progress.Timestamp : _waiting!.Timestamp;
         string name = progress.StepName ?? "Workflow";
-        string line = $"[{timestamp:HH:mm:ss}] [{name}] {progress.Message}（累計{FormatElapsed(progress.Elapsed)}）";
+        string line = $"[{timestamp:HH:mm:ss}] [{name}] {progress.Message}（{FormatTiming(progress)}）";
         ConsoleWorkflowOutput.WriteProgressLine(_waitingLineKey!, line, ConsoleColor.DarkGray);
     }
 
     /// <summary>
-    /// 以總分鐘與剩餘秒數顯示累計時間；超過一小時仍持續累計分鐘。
+    /// 顯示流程累計時間；步驟結束時另外列出該次執行的總耗時。
+    /// </summary>
+    private static string FormatTiming(AppServerWorkflowProgress progress)
+        => progress.StepDuration is { } duration
+            ? $"本次步驟耗時{FormatElapsed(duration)}，累計{FormatElapsed(progress.Elapsed)}"
+            : $"累計{FormatElapsed(progress.Elapsed)}";
+
+    /// <summary>
+    /// 以總分鐘與剩餘秒數顯示時間；超過一小時仍持續累計分鐘。
     /// </summary>
     private static string FormatElapsed(TimeSpan elapsed)
         => $"{(long)elapsed.TotalMinutes}分{elapsed.Seconds}秒";

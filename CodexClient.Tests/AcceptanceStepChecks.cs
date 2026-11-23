@@ -53,6 +53,10 @@ internal static class AcceptanceStepChecks
             Assert(result.Steps[1].FailureCount == 1 && result.Steps.Last().Accepted);
             Assert(progress.Items.Last().Status == AppServerWorkflowStatus.Stopped);
             Assert(progress.Items.All(item => item.Status != AppServerWorkflowStatus.Completed));
+            Assert(progress.Items.Any(item => item.StepName == "Review" && item.Status == AppServerWorkflowStatus.NeedsRevision &&
+                item.StepDuration == result.Steps[1].Duration && item.StepDuration > TimeSpan.Zero));
+            Assert(progress.Items.Any(item => item.StepName == "Style" && item.Status == AppServerWorkflowStatus.StepCompleted &&
+                item.StepDuration == result.Steps[2].Duration && item.StepDuration > TimeSpan.Zero));
         });
         await Check("final acceptance guard rejects routing around acceptance after revision", async () =>
         {

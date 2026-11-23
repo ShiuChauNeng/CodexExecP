@@ -19,6 +19,11 @@ public sealed record AppServerWorkflowStepResult(string Name, string? ThreadId, 
     public bool Accepted { get; internal init; }
 
     /// <summary>
+    /// 此次步驟執行的總耗時，包含建立 thread、AI 執行、等待回答及完成驗證；重跑分開計算。
+    /// </summary>
+    public TimeSpan Duration { get; init; }
+
+    /// <summary>
     /// 取得此步驟各次 turn 的診斷資訊。
     /// </summary>
     public IReadOnlyList<AppServerTurnDiagnostics> Diagnostics { get; init; } = [];

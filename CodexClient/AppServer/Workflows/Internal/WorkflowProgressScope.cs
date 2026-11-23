@@ -39,11 +39,15 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
     /// <param name="message">狀態訊息。</param>
     /// <param name="stepName">相關步驟名稱。</param>
     /// <param name="threadId">相關 thread 識別碼。</param>
-    internal void Update(AppServerWorkflowStatus status, string message, string? stepName = null, string? threadId = null)
+    /// <param name="stepDuration">步驟結束時的本次耗時。</param>
+    internal void Update(AppServerWorkflowStatus status, string message, string? stepName = null, string? threadId = null, TimeSpan? stepDuration = null)
     {
         lock (_sync)
         {
-            _current = new(DateTimeOffset.Now, status, stepName, threadId, message, _elapsed.Elapsed);
+            _current = new(DateTimeOffset.Now, status, stepName, threadId, message, _elapsed.Elapsed)
+            {
+                StepDuration = stepDuration
+            };
             Report(_current);
         }
     }
@@ -53,7 +57,7 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
     /// </summary>
     internal void ReportStepResult(AppServerWorkflowStepResult result)
     {
-        Update(GetStepStatus(result), GetStepMessage(result), result.Name, result.ThreadId);
+        Update(GetStepStatus(result), GetStepMessage(result), result.Name, result.ThreadId, result.Duration);
     }
 
     /// <summary>
