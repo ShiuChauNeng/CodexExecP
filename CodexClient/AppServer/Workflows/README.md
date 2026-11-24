@@ -344,6 +344,27 @@ var acceptance = new AppServerAcceptanceStep("Acceptance", "依原始 Spec 與�
 - 確認包含在該輪 `InputTimeout`／整體 `Timeout` 內；`ExecutionTimeout` 仍暫停，`MaxInputRounds` 只計算 AI 提問輪次，不增加確認輪次。
 - 群組設定只控制自動附加的內容，不會抹除共用 thread 的對話歷史；若需要對話隔離，應使用不同 thread。
 
+## Console 訊息配色
+
+進度的 `MessageKind` 與結果的 `StopMessageKind` 只提供顯示資訊，原有 Status、心跳條件、Accepted、Succeeded、Error 與重試規則維持原有行為。
+首次輸出、同一行刷新與最終報告共用 `ConsoleWorkflowOutput.GetMessageStyle()` 的配色：
+
+| 顯示分類 | 顏色 | 用途 |
+|---|---|---|
+| Waiting | 深灰色 | 執行中、等待 AI、真正執行驗證 |
+| Question | 粉紫色 | 等待使用者回答 |
+| Success | 粉綠色 | 沒有 issues 的完成訊息與通過狀態 |
+| Warning | 橘色 | 保留 issues、需修正、無法判定、補查、取消，以及因驗收限制而停止的原因 |
+| Error | 紅色 | 執行、驗證或分流錯誤 |
+| Information | 主控台原色 | 一般資訊 |
+
+驗收無法判定與補查仍沿用 Validating 狀態與原有心跳，但會明確帶 Warning，刷新時也保留橘色。
+真正執行驗證時未指定 Warning，維持深灰色。顏色不依 StepDuration 或訊息文字猜測。
+步驟 Accepted=true 但有 issues 時仍允許流程繼續，原有「通過」標籤維持，顏色則為橘色提醒。
+即使達驗收失敗上限時 Error 仍保留原有例外，進度與最後停止原因都以 Warning 顯示；執行或分流錯誤仍用紅色。
+最上方的「執行結果：成功／失敗」仍分別以綠色／紅色表示 Succeeded，與停止原因的顯示分類分開。
+未提供 MessageKind 的舊進度呼叫端仍依 Status 選色；未提供 StopMessageKind 的手動結果仍依 Error 選色。
+
 ## Console 事件通知
 
 使用 Console 元件時請加入：

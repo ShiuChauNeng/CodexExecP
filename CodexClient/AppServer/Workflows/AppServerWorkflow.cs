@@ -190,7 +190,8 @@ public sealed class AppServerWorkflow
                 string reason = result.Error is not null
                     ? $"步驟執行或驗證失敗：{result.Error.Message}"
                     : $"步驟有未解決問題：{string.Join("；", result.Execution!.Issues)}";
-                progress.Update(AppServerWorkflowStatus.Stopped, $"Workflow 停止於 {step.Name}。", step.Name, result.ThreadId);
+                progress.Update(AppServerWorkflowStatus.Stopped, $"Workflow 停止於 {step.Name}。", step.Name, result.ThreadId,
+                    messageKind: result.Error is null ? AppServerWorkflowMessageKind.Warning : AppServerWorkflowMessageKind.Error);
                 return Finish(false, step.Name, results, threads, result.Error, reason);
             }
 
@@ -210,12 +211,13 @@ public sealed class AppServerWorkflow
                         retryFeedback = result;
                         progress.Update(AppServerWorkflowStatus.Validating,
                             $"{step.Name} 尚有必要項目無法判定，補查驗收（第 {result.InconclusiveCount}/{acceptance.MaxInconclusiveRetries} 次）。",
-                            step.Name, result.ThreadId);
+                            step.Name, result.ThreadId, messageKind: AppServerWorkflowMessageKind.Warning);
                         continue;
                     }
 
                     string reason = $"必要驗收項目仍無法判定，已達補查上限（{acceptance.MaxInconclusiveRetries} 次）。";
-                    progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name}：{reason}", step.Name, result.ThreadId);
+                    progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name}：{reason}", step.Name, result.ThreadId,
+                        messageKind: AppServerWorkflowMessageKind.Warning);
                     return Finish(false, step.Name, results, threads, stopReason: reason);
                 }
 
@@ -225,8 +227,9 @@ public sealed class AppServerWorkflow
                     {
                         var error = new InvalidOperationException($"Acceptance step '{step.Name}' reached its failure limit ({acceptance.MaxFailures}). Failures: {result.FailureCount}.");
                         string reason = $"驗收不通過，已達失敗上限（{acceptance.MaxFailures} 次）。";
-                        progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name}：{reason}", step.Name, result.ThreadId);
-                        return Finish(false, step.Name, results, threads, error, reason);
+                        progress.Update(AppServerWorkflowStatus.Stopped, $"{step.Name}：{reason}", step.Name, result.ThreadId,
+                            messageKind: AppServerWorkflowMessageKind.Warning);
+                        return Finish(false, step.Name, results, threads, error, reason, AppServerWorkflowMessageKind.Warning);
                     }
 
                     nextIndex = indices[acceptance.RetryStep];
@@ -273,7 +276,8 @@ public sealed class AppServerWorkflow
             var first = pendingAcceptances[0];
             string names = string.Join("、", pendingAcceptances.Select(result => $"{result.Name}（{result.AcceptanceDecision}）"));
             string reason = $"流程結束前檢查未通過：{names} 的最後一次驗收仍未通過，需完成修正或補查並重新驗收。";
-            progress.Update(AppServerWorkflowStatus.Stopped, reason, first.Name, first.ThreadId);
+            progress.Update(AppServerWorkflowStatus.Stopped, reason, first.Name, first.ThreadId,
+                messageKind: AppServerWorkflowMessageKind.Warning);
             return Finish(false, first.Name, results, threads, stopReason: reason);
         }
 
@@ -346,13 +350,15 @@ public sealed class AppServerWorkflow
     /// <param name="threads">已建立的 thread 對應表。</param>
     /// <param name="error">導致 Workflow 結束的錯誤。</param>
     /// <param name="stopReason">流程停止的原因；成功時省略。</param>
+    /// <param name="stopMessageKind">選填的停止原因顯示分類。</param>
     /// <returns>Workflow 結果。</returns>
-    private static AppServerWorkflowResult Finish(bool succeeded, string? failedStep, List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads, Exception? error = null, string? stopReason = null)
+    private static AppServerWorkflowResult Finish(bool succeeded, string? failedStep, List<AppServerWorkflowStepResult> results, Dictionary<string, string> threads, Exception? error = null, string? stopReason = null, AppServerWorkflowMessageKind? stopMessageKind = null)
         // 回傳後這次執行不再變更 threads，唯讀包裝即可，不需再複製。
         => new(succeeded, failedStep, Array.AsReadOnly(results.ToArray()), new ReadOnlyDictionary<string, string>(threads))
         {
             Error = error,
             StopReason = stopReason,
+            StopMessageKind = succeeded ? null : stopMessageKind ?? (error is null ? AppServerWorkflowMessageKind.Warning : AppServerWorkflowMessageKind.Error),
             Decisions = Array.AsReadOnly(results.SelectMany(result => result.Decisions).ToArray())
         };
 }

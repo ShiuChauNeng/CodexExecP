@@ -152,6 +152,7 @@ internal static class AcceptanceStepChecks
             var result = await Workflow(client).Add(new("Implement", "implement"))
                 .Add(Review()).Add(new("Style", "style")).RunAsync();
             Assert(!result.Succeeded && result.FailedStep == "Review" && result.Error!.Message.Contains("Failures: 3"));
+            Assert(result.StopMessageKind == AppServerWorkflowMessageKind.Warning);
             Assert(result.StopReason == "驗收不通過，已達失敗上限（3 次）。");
             Assert(result.Steps.Count == 6 && result.Steps.Last().FailureCount == 3 && result.Steps.Last().Completed);
         });
@@ -213,6 +214,7 @@ internal static class AcceptanceStepChecks
                     { Checks = empty ? [] : [new("SPEC-001", AcceptanceCheckStatus.NotEvaluated, "test environment unavailable")] } };
                 var result = await Workflow(client).Add(new("Implement", "implement")).Add(Review()).RunAsync();
                 Assert(!result.Succeeded && result.Steps.Count == 4 && result.Error is null);
+                Assert(result.StopMessageKind == AppServerWorkflowMessageKind.Warning);
                 Assert(result.FailedStep == "Review" && result.StopReason == "必要驗收項目仍無法判定，已達補查上限（2 次）。");
                 Assert(result.Steps[1].AcceptanceDecision == AcceptanceDecision.Inconclusive && result.Steps[1].FailureCount == 0);
                 Assert(result.Steps.Last().InconclusiveCount == 3 && result.Steps.Last().FailureCount == 0);

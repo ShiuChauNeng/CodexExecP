@@ -40,13 +40,15 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
     /// <param name="stepName">相關步驟名稱。</param>
     /// <param name="threadId">相關 thread 識別碼。</param>
     /// <param name="stepDuration">步驟結束時的本次耗時。</param>
-    internal void Update(AppServerWorkflowStatus status, string message, string? stepName = null, string? threadId = null, TimeSpan? stepDuration = null)
+    /// <param name="messageKind">選填的顯示分類，不參與流程判定。</param>
+    internal void Update(AppServerWorkflowStatus status, string message, string? stepName = null, string? threadId = null, TimeSpan? stepDuration = null, AppServerWorkflowMessageKind? messageKind = null)
     {
         lock (_sync)
         {
             _current = new(DateTimeOffset.Now, status, stepName, threadId, message, _elapsed.Elapsed)
             {
-                StepDuration = stepDuration
+                StepDuration = stepDuration,
+                MessageKind = messageKind
             };
             Report(_current);
         }
@@ -57,7 +59,23 @@ internal sealed class WorkflowProgressScope : IAsyncDisposable
     /// </summary>
     internal void ReportStepResult(AppServerWorkflowStepResult result)
     {
-        Update(GetStepStatus(result), GetStepMessage(result), result.Name, result.ThreadId, result.Duration);
+        Update(GetStepStatus(result), GetStepMessage(result), result.Name, result.ThreadId, result.Duration, GetStepMessageKind(result));
+    }
+
+    /// <summary>
+    /// 決定步驟結果的顯示分類，與既有狀態及接受條件分開。
+    /// </summary>
+    private static AppServerWorkflowMessageKind GetStepMessageKind(AppServerWorkflowStepResult result)
+    {
+        if (result.Error is not null)
+        {
+            return AppServerWorkflowMessageKind.Error;
+        }
+        if (result.HasIssues || !result.Accepted)
+        {
+            return AppServerWorkflowMessageKind.Warning;
+        }
+        return AppServerWorkflowMessageKind.Success;
     }
 
     /// <summary>

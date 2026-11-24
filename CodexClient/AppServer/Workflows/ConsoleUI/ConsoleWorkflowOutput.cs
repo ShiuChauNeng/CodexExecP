@@ -13,7 +13,7 @@ internal static class ConsoleWorkflowOutput
     /// 以問題提示色輸出文字並換行。
     /// </summary>
     internal static void WriteQuestionLine(string text)
-        => WriteCore(() => Console.WriteLine(text), ConsoleColor.Magenta, "\u001b[38;2;225;145;215m");
+        => WriteMessageLine(text, AppServerWorkflowMessageKind.Question);
 
     /// <summary>
     /// 以回答提示色輸出文字，保留游標供使用者輸入。
@@ -37,19 +37,54 @@ internal static class ConsoleWorkflowOutput
     /// 以橘色輸出文字並換行。
     /// </summary>
     internal static void WriteOrangeLine(string text)
-        => WriteCore(() => Console.WriteLine(text), ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
+        => WriteMessageLine(text, AppServerWorkflowMessageKind.Warning);
 
     /// <summary>
     /// 以橘色輸出文字但不換行。
     /// </summary>
     internal static void WriteOrange(string text)
-        => WriteCore(() => Console.Write(text), ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
+        => WriteMessage(text, AppServerWorkflowMessageKind.Warning);
 
     /// <summary>
-    /// 以橘色更新同一個等待行，保留既有游標與重新導向處理。
+    /// 依共用配色規則輸出訊息，不換行。
     /// </summary>
-    internal static void WriteOrangeProgressLine(object key, string text)
-        => WriteProgressLine(key, text, ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
+    internal static void WriteMessage(string text, AppServerWorkflowMessageKind kind)
+    {
+        var style = GetMessageStyle(kind);
+        WriteCore(() => Console.Write(text), style.Color, style.AnsiColor);
+    }
+
+    /// <summary>
+    /// 依共用配色規則輸出訊息並換行。
+    /// </summary>
+    internal static void WriteMessageLine(string text, AppServerWorkflowMessageKind kind)
+    {
+        var style = GetMessageStyle(kind);
+        WriteCore(() => Console.WriteLine(text), style.Color, style.AnsiColor);
+    }
+
+    /// <summary>
+    /// 依共用配色規則更新原有等待行，不改變刷新或游標處理。
+    /// </summary>
+    internal static void WriteMessageProgressLine(object key, string text, AppServerWorkflowMessageKind kind)
+    {
+        var style = GetMessageStyle(kind);
+        WriteProgressLine(key, text, style.Color, style.AnsiColor);
+    }
+
+    /// <summary>
+    /// 取得首次輸出、心跳與最終報告共用的 Console 及 ANSI 顏色。
+    /// </summary>
+    internal static (ConsoleColor? Color, string? AnsiColor) GetMessageStyle(AppServerWorkflowMessageKind kind)
+        => kind switch
+        {
+            AppServerWorkflowMessageKind.Waiting => (ConsoleColor.DarkGray, null),
+            AppServerWorkflowMessageKind.Question => (ConsoleColor.Magenta, "\u001b[38;2;225;145;215m"),
+            AppServerWorkflowMessageKind.Success => (ConsoleColor.Green, null),
+            AppServerWorkflowMessageKind.Warning => (ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m"),
+            AppServerWorkflowMessageKind.Error => (ConsoleColor.Red, null),
+            _ => (null, null)
+        };
 
     /// <summary>
     /// 更新同一個等待行；導向檔案或無法取得游標時維持逐行輸出。

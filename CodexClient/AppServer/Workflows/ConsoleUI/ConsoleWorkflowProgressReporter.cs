@@ -65,23 +65,7 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         _waitingLineKey = null;
         string name = progress.StepName ?? "Workflow";
         string line = $"[{progress.Timestamp:HH:mm:ss}] [{name}] {progress.Message}（{FormatTiming(progress)}）";
-        if (progress.Status is AppServerWorkflowStatus.NeedsRevision or AppServerWorkflowStatus.Cancelled)
-        {
-            ConsoleWorkflowOutput.WriteOrangeLine(line);
-            return;
-        }
-        if (!progress.IsHeartbeat && progress.Status == AppServerWorkflowStatus.WaitingForInput)
-        {
-            ConsoleWorkflowOutput.WriteQuestionLine(line);
-            return;
-        }
-        ConsoleColor? color = progress.IsHeartbeat ? ConsoleColor.DarkGray : progress.Status switch
-        {
-            AppServerWorkflowStatus.StepCompleted or AppServerWorkflowStatus.Completed => ConsoleColor.Green,
-            AppServerWorkflowStatus.StepFailed or AppServerWorkflowStatus.Stopped or AppServerWorkflowStatus.Faulted => ConsoleColor.Red,
-            _ => null
-        };
-        ConsoleWorkflowOutput.WriteLine(line, color);
+        ConsoleWorkflowOutput.WriteMessageLine(line, GetMessageKind(progress));
     }
 
     /// <summary>
@@ -101,15 +85,23 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         DateTimeOffset timestamp = Console.IsOutputRedirected ? progress.Timestamp : _waiting!.Timestamp;
         string name = progress.StepName ?? "Workflow";
         string line = $"[{timestamp:HH:mm:ss}] [{name}] {progress.Message}（{FormatTiming(progress)}）";
-        if (progress.Status == AppServerWorkflowStatus.Validating && progress.StepDuration is not null)
-        {
-            ConsoleWorkflowOutput.WriteOrangeProgressLine(_waitingLineKey!, line);
-        }
-        else
-        {
-            ConsoleWorkflowOutput.WriteProgressLine(_waitingLineKey!, line, ConsoleColor.DarkGray);
-        }
+        ConsoleWorkflowOutput.WriteMessageProgressLine(_waitingLineKey!, line, GetMessageKind(progress));
     }
+
+    /// <summary>
+    /// 優先使用明確的顯示分類；舊呼叫端未指定時依原有狀態選色，心跳不覆寫分類。
+    /// </summary>
+    internal static AppServerWorkflowMessageKind GetMessageKind(AppServerWorkflowProgress progress)
+        => progress.MessageKind ?? progress.Status switch
+        {
+            AppServerWorkflowStatus.Starting or AppServerWorkflowStatus.CreatingThread or AppServerWorkflowStatus.Running or
+                AppServerWorkflowStatus.Validating => AppServerWorkflowMessageKind.Waiting,
+            AppServerWorkflowStatus.WaitingForInput => AppServerWorkflowMessageKind.Question,
+            AppServerWorkflowStatus.StepCompleted or AppServerWorkflowStatus.Completed => AppServerWorkflowMessageKind.Success,
+            AppServerWorkflowStatus.NeedsRevision or AppServerWorkflowStatus.Cancelled => AppServerWorkflowMessageKind.Warning,
+            AppServerWorkflowStatus.StepFailed or AppServerWorkflowStatus.Stopped or AppServerWorkflowStatus.Faulted => AppServerWorkflowMessageKind.Error,
+            _ => AppServerWorkflowMessageKind.Information
+        };
 
     /// <summary>
     /// 顯示流程累計時間；步驟結束時另外列出該次執行的總耗時。

@@ -36,14 +36,7 @@ public sealed class ConsoleWorkflowResultReporter
             var status = statuses[index];
             ConsoleWorkflowOutput.Write((index + 1).ToString($"D{numberWidth}") + "  ", ConsoleColor.DarkGray);
             ConsoleWorkflowOutput.Write(step.Name + new string(' ', nameWidth - GetDisplayWidth(step.Name) + 2));
-            if (status.Color == ConsoleColor.DarkYellow)
-            {
-                ConsoleWorkflowOutput.WriteOrange(status.Text);
-            }
-            else
-            {
-                ConsoleWorkflowOutput.Write(status.Text, status.Color);
-            }
+            ConsoleWorkflowOutput.WriteMessage(status.Text, status.Kind);
 
             ConsoleWorkflowOutput.Write(new string(' ', statusWidth - GetDisplayWidth(status.Text)));
             ConsoleWorkflowOutput.Write($" | 耗時{durations[index]}", ConsoleColor.DarkGray);
@@ -136,14 +129,8 @@ public sealed class ConsoleWorkflowResultReporter
     {
         ConsoleWorkflowOutput.WriteLine($"停止步驟：{result.FailedStep ?? "未提供"}");
         string reason = $"停止原因：{result.StopReason ?? result.Error?.Message ?? "未提供停止原因。"}";
-        if (result.Error is not null)
-        {
-            ConsoleWorkflowOutput.WriteLine(reason, ConsoleColor.Red);
-        }
-        else
-        {
-            ConsoleWorkflowOutput.WriteOrangeLine(reason);
-        }
+        var kind = result.StopMessageKind ?? (result.Error is null ? AppServerWorkflowMessageKind.Warning : AppServerWorkflowMessageKind.Error);
+        ConsoleWorkflowOutput.WriteMessageLine(reason, kind);
     }
 
     /// <summary>
@@ -163,21 +150,21 @@ public sealed class ConsoleWorkflowResultReporter
     /// <summary>
     /// 依步驟完成、接受與驗收結果，取得顯示標籤及顏色。
     /// </summary>
-    private static (string Text, ConsoleColor Color) GetStatus(AppServerWorkflowStepResult step)
+    internal static (string Text, AppServerWorkflowMessageKind Kind) GetStatus(AppServerWorkflowStepResult step)
     {
         if (!step.Completed)
         {
-            return ("[執行失敗]", ConsoleColor.Red);
+            return ("[執行失敗]", AppServerWorkflowMessageKind.Error);
         }
         if (step.Accepted)
         {
-            return ("[通過]", ConsoleColor.Green);
+            return ("[通過]", step.HasIssues ? AppServerWorkflowMessageKind.Warning : AppServerWorkflowMessageKind.Success);
         }
         return step.AcceptanceDecision switch
         {
-            AcceptanceDecision.NeedsRevision => ("[需修正]", ConsoleColor.DarkYellow),
-            AcceptanceDecision.Inconclusive => ("[無法判定]", ConsoleColor.Yellow),
-            _ => ("[未通過]", ConsoleColor.Red)
+            AcceptanceDecision.NeedsRevision => ("[需修正]", AppServerWorkflowMessageKind.Warning),
+            AcceptanceDecision.Inconclusive => ("[無法判定]", AppServerWorkflowMessageKind.Warning),
+            _ => ("[未通過]", step.HasIssues ? AppServerWorkflowMessageKind.Warning : AppServerWorkflowMessageKind.Error)
         };
     }
 

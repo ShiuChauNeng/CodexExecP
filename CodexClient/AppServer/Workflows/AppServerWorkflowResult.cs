@@ -21,6 +21,11 @@ public sealed record AppServerWorkflowResult(
     public string? StopReason { get; init; }
 
     /// <summary>
+    /// 停止原因的顯示分類；不影響 Succeeded 或 Error，未提供時由 Reporter 依 Error 選色。
+    /// </summary>
+    public AppServerWorkflowMessageKind? StopMessageKind { get; init; }
+
+    /// <summary>
     /// 本次執行已確認的需求決策快照，包含重跑或失敗步驟中已確認的紀錄。
     /// </summary>
     public IReadOnlyList<AppServerWorkflowDecision> Decisions { get; init; } = [];
