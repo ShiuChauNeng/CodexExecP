@@ -65,7 +65,7 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         _waitingLineKey = null;
         string name = progress.StepName ?? "Workflow";
         string line = $"[{progress.Timestamp:HH:mm:ss}] [{name}] {progress.Message}（{FormatTiming(progress)}）";
-        if (!progress.IsHeartbeat && progress.Status is AppServerWorkflowStatus.NeedsRevision or AppServerWorkflowStatus.Cancelled)
+        if (progress.Status is AppServerWorkflowStatus.NeedsRevision or AppServerWorkflowStatus.Cancelled)
         {
             ConsoleWorkflowOutput.WriteOrangeLine(line);
             return;
@@ -101,7 +101,14 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
         DateTimeOffset timestamp = Console.IsOutputRedirected ? progress.Timestamp : _waiting!.Timestamp;
         string name = progress.StepName ?? "Workflow";
         string line = $"[{timestamp:HH:mm:ss}] [{name}] {progress.Message}（{FormatTiming(progress)}）";
-        ConsoleWorkflowOutput.WriteProgressLine(_waitingLineKey!, line, ConsoleColor.DarkGray);
+        if (progress.Status == AppServerWorkflowStatus.Validating && progress.StepDuration is not null)
+        {
+            ConsoleWorkflowOutput.WriteOrangeProgressLine(_waitingLineKey!, line);
+        }
+        else
+        {
+            ConsoleWorkflowOutput.WriteProgressLine(_waitingLineKey!, line, ConsoleColor.DarkGray);
+        }
     }
 
     /// <summary>

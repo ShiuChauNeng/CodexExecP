@@ -46,16 +46,22 @@ internal static class ConsoleWorkflowOutput
         => WriteCore(() => Console.Write(text), ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
 
     /// <summary>
+    /// 以橘色更新同一個等待行，保留既有游標與重新導向處理。
+    /// </summary>
+    internal static void WriteOrangeProgressLine(object key, string text)
+        => WriteProgressLine(key, text, ConsoleColor.DarkYellow, "\u001b[38;2;255;165;0m");
+
+    /// <summary>
     /// 更新同一個等待行；導向檔案或無法取得游標時維持逐行輸出。
     /// </summary>
-    internal static void WriteProgressLine(object key, string text, ConsoleColor? color)
+    internal static void WriteProgressLine(object key, string text, ConsoleColor? color, string? ansiColor = null)
     {
         lock (Sync)
         {
             if (Console.IsOutputRedirected || !TryGetCursor(out var cursor))
             {
                 FinishProgressLine();
-                WriteColored(() => Console.WriteLine(text), color);
+                WriteColored(() => Console.WriteLine(text), color, ansiColor);
                 return;
             }
 
@@ -78,10 +84,10 @@ internal static class ConsoleWorkflowOutput
             _progressKey = null;
             if (!TryGetCursor(out var start))
             {
-                WriteColored(() => Console.WriteLine(text), color);
+                WriteColored(() => Console.WriteLine(text), color, ansiColor);
                 return;
             }
-            WriteColored(() => Console.Write(text), color);
+            WriteColored(() => Console.Write(text), color, ansiColor);
             if (TryGetCursor(out var end) && end.Top == start.Top && end.Left >= text.Length &&
                 text.Length < start.Width && end.Width == start.Width && text.IndexOfAny(['\r', '\n', '\t']) < 0)
             {
