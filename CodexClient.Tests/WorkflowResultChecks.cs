@@ -72,7 +72,26 @@ internal static class WorkflowResultChecks
         Assert(output.IndexOf("需修正問題：[SPEC-002]", StringComparison.Ordinal) < output.IndexOf("05  Implement", StringComparison.Ordinal));
         Assert(!output.Contains('\u001b'));
         Console.WriteLine("PASS: revision findings and failed checks remain under their original assessment after final acceptance passes");
-        return 7;
+        double[] seconds = [0, 65, 59, 3601, 120, 5];
+        output = Render(revision with
+        {
+            Steps = revision.Steps.Select((step, index) => step with { Duration = TimeSpan.FromSeconds(seconds[index]) }).ToArray()
+        });
+        var stepLines = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.Length > 1 && char.IsDigit(line[0]) && char.IsDigit(line[1])).ToArray();
+        Assert(stepLines.Length == 6);
+        Assert(stepLines[0].Contains("[通過]") && stepLines[0].Contains("耗時0分0秒"));
+        Assert(stepLines[1].Contains("[需修正]") && stepLines[1].Contains("耗時1分5秒"));
+        Assert(stepLines[2].Contains("耗時0分59秒") && stepLines[3].Contains("耗時60分1秒"));
+        Assert(stepLines[4].Contains("耗時2分0秒") && stepLines[5].Contains("耗時0分5秒"));
+        output = Render(stopped with
+        {
+            Steps = [new AppServerWorkflowStepResult("Failure", "thread", null, new IOException("failed"))
+                { Duration = TimeSpan.FromSeconds(75) }]
+        });
+        Assert(output.Contains("[執行失敗] | 耗時1分15秒"));
+        Console.WriteLine("PASS: final timeline shows each execution's duration for successful, failed and repeated steps");
+        return 8;
     }
 
     /// <summary>

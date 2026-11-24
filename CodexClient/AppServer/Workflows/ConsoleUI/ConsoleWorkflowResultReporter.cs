@@ -9,7 +9,7 @@ namespace CodexClient.AppServer.Workflows.ConsoleUI;
 public sealed class ConsoleWorkflowResultReporter
 {
     /// <summary>
-    /// 輸出流程結果、停止原因、各次步驟紀錄、未解決問題與已確認需求決策；只有驗收結果顯示累計次數。
+    /// 輸出流程結果、停止原因、各次步驟紀錄及耗時、未解決問題與已確認需求決策；只有驗收結果顯示累計次數。
     /// </summary>
     /// <param name="result">要輸出的 Workflow 結果。</param>
     public void Report(AppServerWorkflowResult result)
@@ -25,8 +25,10 @@ public sealed class ConsoleWorkflowResultReporter
         }
 
         var statuses = result.Steps.Select(GetStatus).ToArray();
+        var durations = result.Steps.Select(step => FormatDuration(step.Duration)).ToArray();
         int nameWidth = result.Steps.Select(step => GetDisplayWidth(step.Name)).DefaultIfEmpty(0).Max();
         int statusWidth = statuses.Select(status => GetDisplayWidth(status.Text)).DefaultIfEmpty(0).Max();
+        int durationWidth = durations.Select(GetDisplayWidth).DefaultIfEmpty(0).Max();
         int numberWidth = Math.Max(2, result.Steps.Count.ToString().Length);
         for (int index = 0; index < result.Steps.Count; index++)
         {
@@ -43,9 +45,11 @@ public sealed class ConsoleWorkflowResultReporter
                 ConsoleWorkflowOutput.Write(status.Text, status.Color);
             }
 
+            ConsoleWorkflowOutput.Write(new string(' ', statusWidth - GetDisplayWidth(status.Text)));
+            ConsoleWorkflowOutput.Write($" | 耗時{durations[index]}", ConsoleColor.DarkGray);
             if (step.FailureCount > 0 || step.InconclusiveCount > 0)
             {
-                ConsoleWorkflowOutput.Write(new string(' ', statusWidth - GetDisplayWidth(status.Text)));
+                ConsoleWorkflowOutput.Write(new string(' ', durationWidth - GetDisplayWidth(durations[index])));
             }
 
             if (step.FailureCount > 0)
@@ -63,6 +67,12 @@ public sealed class ConsoleWorkflowResultReporter
         ReportIssues(result.Steps);
         ReportDecisions(result.Decisions);
     }
+
+    /// <summary>
+    /// 以總分鐘與剩餘秒數顯示單次步驟耗時，超過一小時仍持續累計分鐘。
+    /// </summary>
+    private static string FormatDuration(TimeSpan duration)
+        => $"{(long)duration.TotalMinutes}分{duration.Seconds}秒";
 
     /// <summary>
     /// 在需修正的驗收紀錄下列出當輪 Findings，沒有對應 Finding 的失敗項目則以證據補充。

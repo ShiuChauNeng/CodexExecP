@@ -238,6 +238,9 @@ Workflow 會逐步傳遞選項；App Server 即使共用 thread，下一步仍�
 
 ## 接受條件
 
+最終步驟時間線會在狀態後顯示每次執行的 `Duration`，例如 `[通過] | 耗時2分15秒`。
+重跑紀錄分開列出，執行失敗也顯示該次已花費的時間；這不是整個 Workflow 的累計時間。
+
 最終 `ConsoleWorkflowResultReporter` 會在流程未成功時，於步驟歷程前顯示停止步驟與原因：
 
 ```text
