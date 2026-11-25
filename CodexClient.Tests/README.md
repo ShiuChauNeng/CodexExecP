@@ -42,6 +42,10 @@ dotnet run --project CodexClient.Tests/CodexClient.Tests.csproj -- --acceptance-
 此專案使用可執行的斷言，不依賴額外測試套件，也不會呼叫真實 AI。
 任何檢查失敗都會以非零代碼結束。
 
+完整測試在 Windows 上會額外啟動一個獨立、隱藏的傳統 Console，實際調整視窗與緩衝區大小並讀回畫面。
+涵蓋寬度／高度變更、剛好填滿行寬、快速縮小後還原、秒數持續更新、等待訊息不重複，以及其他輸出與歷史紀錄保留。
+此測試只操作自己建立的 Console，結束後刪除暫存報告；不呼叫真實 AI，也不調整使用者的執行視窗。
+
 配色檢查以實際心跳驗證 Warning 分類持續保留、開始新的執行後回到 Waiting，並比對共用 Console／ANSI 顏色。
 也確認保留 issues 的接受結果與 Inconclusive 在進度及最終報告皆為 Warning，執行錯誤仍為 Error；原有 Status 與接受結果不變。
 這些檢查驗證選色規則及 ANSI 設定，不等同於所有終端機主題的實際視覺測試。

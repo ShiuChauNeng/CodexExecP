@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace CodexClient.AppServer.Workflows.ConsoleUI;
 
 /// <summary>
@@ -7,7 +10,9 @@ internal static class ConsoleWorkflowOutput
 {
     private static readonly object Sync = new();
     private static object? _progressKey;
-    private static (int Left, int Top, int Width) _progressEnd;
+    private static (int Left, int Top, int Width, int Height, int BufferWidth) _progressEnd;
+    private static string _progressText = string.Empty;
+    private static bool _progressIsSingleRow;
 
     /// <summary>
     /// 以問題提示色輸出文字並換行。
@@ -100,14 +105,24 @@ internal static class ConsoleWorkflowOutput
                 return;
             }
 
-            // 只有游標仍在上次輸出結尾才覆寫，保留其他來源插入的輸出。
-            if (ReferenceEquals(_progressKey, key) && cursor == _progressEnd)
+            bool sameProgress = ReferenceEquals(_progressKey, key);
+            bool redrawing = false;
+            if (sameProgress)
             {
-                Console.Write('\r');
-                Console.Write(new string(' ', cursor.Left));
-                Console.Write('\r');
+                if (_progressIsSingleRow && cursor == _progressEnd)
+                {
+                    Console.Write('\r');
+                    Console.Write(new string(' ', cursor.Left));
+                    Console.Write('\r');
+                    redrawing = true;
+                }
+                else
+                {
+                    // 縮放或游標變動後，以實際畫面內容確認所有權，不推算舊文字占了幾行。
+                    redrawing = WindowsConsoleProgress.TryClear(_progressText, cursor.Left, cursor.Top, cursor.BufferWidth);
+                }
             }
-            else
+            if (!redrawing)
             {
                 FinishProgressLine();
                 if (TryGetCursor(out var current) && current.Left != 0)
@@ -115,26 +130,92 @@ internal static class ConsoleWorkflowOutput
                     Console.WriteLine();
                 }
             }
-
             _progressKey = null;
             if (!TryGetCursor(out var start))
             {
                 WriteColored(() => Console.WriteLine(text), color, ansiColor);
                 return;
             }
-            WriteColored(() => Console.Write(text), color, ansiColor);
-            if (TryGetCursor(out var end) && end.Top == start.Top && end.Left >= text.Length &&
-                text.Length < start.Width && end.Width == start.Width && text.IndexOfAny(['\r', '\n', '\t']) < 0)
+            string displayedText = text.IndexOfAny(['\r', '\n', '\t']) < 0
+                ? FitProgressLine(text, Math.Max(0, start.Width - 1))
+                : text;
+            int displayedWidth = displayedText.EnumerateRunes().Sum(GetColumnWidth);
+            WriteColored(() => Console.Write(displayedText), color, ansiColor);
+            if (text.IndexOfAny(['\r', '\n', '\t']) < 0 && TryGetCursor(out var end))
             {
                 _progressKey = key;
                 _progressEnd = end;
+                _progressText = displayedText;
+                _progressIsSingleRow = start.Left == 0 && end.Top == start.Top && end.Left == displayedWidth &&
+                    displayedWidth < start.Width && end.Width == start.Width && end.Height == start.Height &&
+                    end.BufferWidth == start.BufferWidth;
             }
             else
             {
-                // 視窗太窄導致換行時不回頭覆寫，避免破壞已捲動的內容。
                 Console.WriteLine();
             }
         }
+    }
+
+    /// <summary>
+    /// 依顯示欄寬縮短等待行的中段，保留開頭的步驟資訊與結尾的耗時，避免窄視窗每次刷新都換行。
+    /// </summary>
+    internal static string FitProgressLine(string text, int maxWidth)
+    {
+        if (maxWidth <= 0)
+        {
+            return string.Empty;
+        }
+        var characters = text.EnumerateRunes().ToArray();
+        if (characters.Sum(GetColumnWidth) <= maxWidth)
+        {
+            return text;
+        }
+        if (maxWidth <= 3)
+        {
+            return new string('.', maxWidth);
+        }
+
+        int leftBudget = (maxWidth - 3) / 2;
+        int rightBudget = maxWidth - 3 - leftBudget;
+        int left = 0;
+        int right = characters.Length;
+        int width = 0;
+        while (left < right && width + GetColumnWidth(characters[left]) <= leftBudget)
+        {
+            width += GetColumnWidth(characters[left++]);
+        }
+        width = 0;
+        while (right > left && width + GetColumnWidth(characters[right - 1]) <= rightBudget)
+        {
+            width += GetColumnWidth(characters[--right]);
+        }
+
+        var result = new StringBuilder();
+        for (int index = 0; index < left; index++)
+        {
+            result.Append(characters[index].ToString());
+        }
+        result.Append("...");
+        for (int index = right; index < characters.Length; index++)
+        {
+            result.Append(characters[index].ToString());
+        }
+        return result.ToString();
+    }
+
+    /// <summary>
+    /// 計算常見終端機中的中英文與 emoji 欄寬；合併字元及格式控制字元不另占欄位。
+    /// </summary>
+    private static int GetColumnWidth(Rune character)
+    {
+        if (Rune.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format)
+        {
+            return 0;
+        }
+        return character.Value is >= 0x2E80 and <= 0xA4CF or >= 0xF900 and <= 0xFAFF or
+            >= 0xFF01 and <= 0xFF60 or >= 0xFFE0 and <= 0xFFE6 or >= 0x1F300 and <= 0x1FAFF or
+            >= 0x20000 and <= 0x3FFFD ? 2 : 1;
     }
 
     /// <summary>
@@ -159,6 +240,7 @@ internal static class ConsoleWorkflowOutput
             return;
         }
         _progressKey = null;
+        _progressIsSingleRow = false;
         if (!TryGetCursor(out var cursor) || cursor.Left != 0)
         {
             Console.WriteLine();
@@ -166,15 +248,16 @@ internal static class ConsoleWorkflowOutput
     }
 
     /// <summary>
-    /// 嘗試取得游標位置及緩衝區寬度；不支援或讀取失敗時回傳 false。
+    /// 嘗試取得游標與可見視窗尺寸；縮放後的尺寸用於判斷舊游標位置是否仍可覆寫。
     /// </summary>
-    private static bool TryGetCursor(out (int Left, int Top, int Width) cursor)
+    private static bool TryGetCursor(out (int Left, int Top, int Width, int Height, int BufferWidth) cursor)
     {
         try
         {
             var position = Console.GetCursorPosition();
-            cursor = (position.Left, position.Top, Console.BufferWidth);
-            return cursor.Width > 0;
+            int bufferWidth = Console.BufferWidth;
+            cursor = (position.Left, position.Top, Math.Min(bufferWidth, Console.WindowWidth), Console.WindowHeight, bufferWidth);
+            return cursor.Width > 0 && cursor.Height > 0;
         }
         catch (Exception exception) when (exception is IOException or PlatformNotSupportedException)
         {

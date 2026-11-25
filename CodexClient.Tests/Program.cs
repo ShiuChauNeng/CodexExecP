@@ -3,6 +3,14 @@ using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
 
 // No external test packages or real AI calls are required.
+if (args.FirstOrDefault() == "--console-resize-check")
+{
+    if (OperatingSystem.IsWindows())
+    {
+        WindowsConsoleResizeChecks.RunChild(args[1]);
+    }
+    return;
+}
 if (args.FirstOrDefault() == "exec")
 {
     await Console.In.ReadToEndAsync();
@@ -201,6 +209,10 @@ passed += await WorkflowResultChecks.RunAsync(workspace);
 passed += WorkflowPlanChecks.Run(workspace);
 passed += await WorkflowColorChecks.RunAsync();
 passed += await ConsoleProgressChecks.RunAsync();
+if (OperatingSystem.IsWindows())
+{
+    passed += await WindowsConsoleResizeChecks.RunAsync();
+}
 Console.WriteLine($"Passed {passed} checks.");
 
 /// <summary>

@@ -54,7 +54,41 @@ internal static class ConsoleProgressChecks
         }
         Console.WriteLine("PASS: redirected progress preserves heartbeat records and separates questions without terminal controls");
         VerifyElapsedFormatting();
-        return 2;
+        VerifyProgressWidth();
+        return 3;
+    }
+
+    /// <summary>
+    /// 驗證視窗縮窄時保留等待行頭尾，且不切斷中文字元或 emoji；放大後仍可顯示完整文字。
+    /// </summary>
+    private static void VerifyProgressWidth()
+    {
+        const string line = "[12:00:00] [Acceptance] 正在等待 AI 執行驗收並更新結果。（累計2分15秒）";
+        string narrow = ConsoleWorkflowOutput.FitProgressLine(line, 64);
+        if (!narrow.StartsWith("[12:00:00]", StringComparison.Ordinal) || !narrow.EndsWith("（累計2分15秒）", StringComparison.Ordinal) ||
+            !narrow.Contains("...") || ConsoleWorkflowOutput.FitProgressLine(line, 200) != line ||
+            ConsoleWorkflowOutput.FitProgressLine("測試文字", 7) != "測...字" ||
+            ConsoleWorkflowOutput.FitProgressLine("😀abcd😀", 7) != "😀...😀" ||
+            ConsoleWorkflowOutput.FitProgressLine("abcdef", 4) != "...f")
+        {
+            throw new Exception("Progress line did not fit the requested terminal width.");
+        }
+        foreach (int width in new[] { 0, 1, 2, 3 })
+        {
+            if (ConsoleWorkflowOutput.FitProgressLine(line, width) != new string('.', width))
+            {
+                throw new Exception("Very narrow progress line exceeds its available width.");
+            }
+        }
+        foreach (int width in new[] { 200, 64, 7, 40, 200 })
+        {
+            string resized = ConsoleWorkflowOutput.FitProgressLine(line, width);
+            if (resized.IndexOfAny(['\r', '\n', '\t']) >= 0 || resized.Length > width)
+            {
+                throw new Exception("Resizing introduced a line break or exceeded the available progress width.");
+            }
+        }
+        Console.WriteLine("PASS: narrow progress lines preserve their edges without wrapping and expand back to full text");
     }
 
     /// <summary>
