@@ -64,7 +64,23 @@ internal static class WorkflowColorChecks
         Assert(ConsoleWorkflowProgressReporter.GetMessageKind(legacy with { IsHeartbeat = true }) == AppServerWorkflowMessageKind.Question);
         Assert(ConsoleWorkflowOutput.GetMessageStyle(AppServerWorkflowMessageKind.Question).AnsiColor == "\u001b[38;2;225;145;215m");
         Console.WriteLine("PASS: execution errors remain red and legacy status-based colors stay stable across heartbeat flags");
-        return 3;
+
+        var legacyValidation = legacy with
+        {
+            Status = AppServerWorkflowStatus.Validating,
+            StepDuration = TimeSpan.FromSeconds(5)
+        };
+        foreach (bool heartbeat in new[] { false, true })
+        {
+            var progress = legacyValidation with { IsHeartbeat = heartbeat };
+            Assert(ConsoleWorkflowProgressReporter.GetMessageKind(progress) == AppServerWorkflowMessageKind.Warning);
+            Assert(ConsoleWorkflowProgressReporter.GetMessageKind(progress with { StepDuration = TimeSpan.Zero }) == AppServerWorkflowMessageKind.Warning);
+            Assert(ConsoleWorkflowProgressReporter.GetMessageKind(progress with { StepDuration = null }) == AppServerWorkflowMessageKind.Waiting);
+            Assert(ConsoleWorkflowProgressReporter.GetMessageKind(progress with { MessageKind = AppServerWorkflowMessageKind.Waiting }) == AppServerWorkflowMessageKind.Waiting);
+            Assert(ConsoleWorkflowProgressReporter.GetMessageKind(progress with { StepDuration = null, MessageKind = AppServerWorkflowMessageKind.Warning }) == AppServerWorkflowMessageKind.Warning);
+        }
+        Console.WriteLine("PASS: legacy completed validation remains orange while explicit message kinds retain priority");
+        return 4;
     }
 
     /// <summary>

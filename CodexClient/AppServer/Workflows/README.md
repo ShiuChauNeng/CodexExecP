@@ -359,11 +359,13 @@ var acceptance = new AppServerAcceptanceStep("Acceptance", "依原始 Spec 與�
 | Information | 主控台原色 | 一般資訊 |
 
 驗收無法判定與補查仍沿用 Validating 狀態與原有心跳，但會明確帶 Warning，刷新時也保留橘色。
-真正執行驗證時未指定 Warning，維持深灰色。顏色不依 StepDuration 或訊息文字猜測。
+真正執行驗證時未指定 Warning，維持深灰色。已提供 MessageKind 的訊息不依 StepDuration 或訊息文字猜測顏色。
 步驟 Accepted=true 但有 issues 時仍允許流程繼續，原有「通過」標籤維持，顏色則為橘色提醒。
 即使達驗收失敗上限時 Error 仍保留原有例外，進度與最後停止原因都以 Warning 顯示；執行或分流錯誤仍用紅色。
 最上方的「執行結果：成功／失敗」仍分別以綠色／紅色表示 Succeeded，與停止原因的顯示分類分開。
-未提供 MessageKind 的舊進度呼叫端仍依 Status 選色；未提供 StopMessageKind 的手動結果仍依 Error 選色。
+未提供 MessageKind 的舊進度呼叫端仍依 Status 選色；其中 Validating 且 StepDuration 有值時相容原有橘色顯示，首次與心跳一致。
+此耗時判斷只用於未提供分類的舊呼叫方式，明確的 MessageKind 一律優先。
+未提供 StopMessageKind 的手動結果仍依 Error 選色。
 
 ## Console 事件通知
 

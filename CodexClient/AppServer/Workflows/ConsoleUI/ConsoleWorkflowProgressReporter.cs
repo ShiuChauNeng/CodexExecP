@@ -89,11 +89,12 @@ public sealed class ConsoleWorkflowProgressReporter : IProgress<AppServerWorkflo
     }
 
     /// <summary>
-    /// 優先使用明確的顯示分類；舊呼叫端未指定時依原有狀態選色，心跳不覆寫分類。
+    /// 優先使用明確的顯示分類；未指定時相容舊狀態與耗時判斷，心跳不覆寫分類。
     /// </summary>
     internal static AppServerWorkflowMessageKind GetMessageKind(AppServerWorkflowProgress progress)
         => progress.MessageKind ?? progress.Status switch
         {
+            AppServerWorkflowStatus.Validating when progress.StepDuration is not null => AppServerWorkflowMessageKind.Warning,
             AppServerWorkflowStatus.Starting or AppServerWorkflowStatus.CreatingThread or AppServerWorkflowStatus.Running or
                 AppServerWorkflowStatus.Validating => AppServerWorkflowMessageKind.Waiting,
             AppServerWorkflowStatus.WaitingForInput => AppServerWorkflowMessageKind.Question,
