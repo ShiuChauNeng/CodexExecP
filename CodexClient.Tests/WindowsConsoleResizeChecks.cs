@@ -49,7 +49,8 @@ internal static class WindowsConsoleResizeChecks
         Console.WriteLine("PASS: real hidden Windows console keeps one updating line across viewport and buffer resizes");
         Console.WriteLine("PASS: exact-width wrapping and rapid shrink/restore continue refreshing without duplicate records");
         Console.WriteLine("PASS: native redraw preserves history and intervening output instead of clearing an inferred range");
-        return 3;
+        Console.WriteLine("PASS: reading history suppresses heartbeat drawing, scrolling back resumes it and a new stage follows the cursor");
+        return 4;
     }
 
     /// <summary>
@@ -110,6 +111,30 @@ internal static class WindowsConsoleResizeChecks
             string screen = ReadScreen();
             Assert(screen.Contains(other) && screen.Contains("HISTORY SENTINEL"), "Redraw erased another output source.");
             Assert(Count(screen, "[15:35:41]") == 2 && screen.Contains("1分8秒"), "Waiting output did not continue after an intervening message.");
+            stage = "scrolling history during waiting";
+            key = Reset();
+            for (int index = 0; index < 40; index++)
+            {
+                Console.WriteLine($"HISTORY {index}");
+            }
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(6), null);
+            var waitingCursor = Console.GetCursorPosition();
+            Console.SetWindowPosition(0, 0);
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(7), null);
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(8), null);
+            Assert(Console.WindowTop == 0 && Console.GetCursorPosition() == waitingCursor, "Heartbeat interrupted history scrolling.");
+            Assert(ReadScreen(60).Contains("1分6秒") && !ReadScreen(60).Contains("1分8秒"), "Heartbeat redrew an off-screen waiting line.");
+
+            Console.SetWindowPosition(0, waitingCursor.Top - Console.WindowHeight + 1);
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(9), null);
+            Assert(ReadScreen(60).Contains("1分9秒") && Count(ReadScreen(60), "[15:35:41]") == 1, "Scrolling back did not resume the latest elapsed time.");
+
+            Console.SetWindowPosition(0, 0);
+            ConsoleWorkflowOutput.WriteProgressLine(new object(), "[15:35:42] [Implement] Next stage", null);
+            Assert(Console.WindowTop > 0 && !WindowsConsoleProgress.IsViewingHistory(), "A new stage did not return to the current output.");
+            Console.SetWindowPosition(0, 0);
+            ConsoleWorkflowOutput.WriteLine("Question or completion message");
+            Assert(!WindowsConsoleProgress.IsViewingHistory(), "A normal message did not return to the current output.");
             File.WriteAllText(report, "PASS");
         }
         catch (Exception error)
@@ -160,13 +185,13 @@ internal static class WindowsConsoleResizeChecks
     }
 
     /// <summary>
-    /// 讀取實際畫面前八列，僅採用 Windows API 回報的有效字元數。
+    /// 讀取指定列數的實際畫面，僅採用 Windows API 回報的有效字元數。
     /// </summary>
-    private static string ReadScreen()
+    private static string ReadScreen(int rows = 8)
     {
         var result = new StringBuilder();
         var line = new StringBuilder(Console.BufferWidth + 1);
-        for (short row = 0; row < 8; row++)
+        for (short row = 0; row < rows; row++)
         {
             line.Clear();
             Assert(ReadConsoleOutputCharacter(GetStdHandle(-11), line, (uint)Console.BufferWidth, new Coordinate(0, row), out uint read), "Cannot read console buffer.");

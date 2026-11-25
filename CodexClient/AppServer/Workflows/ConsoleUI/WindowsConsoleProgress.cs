@@ -9,6 +9,48 @@ namespace CodexClient.AppServer.Workflows.ConsoleUI;
 internal static class WindowsConsoleProgress
 {
     /// <summary>
+    /// 判斷使用者是否已將可見範圍移離目前輸出位置，避免心跳打斷歷史閱讀。
+    /// </summary>
+    internal static bool IsViewingHistory()
+    {
+        if (!OperatingSystem.IsWindows() || Console.IsOutputRedirected)
+        {
+            return false;
+        }
+        try
+        {
+            int top = Console.WindowTop;
+            int cursor = Console.CursorTop;
+            return cursor < top || cursor >= top + Console.WindowHeight;
+        }
+        catch (Exception exception) when (exception is IOException or PlatformNotSupportedException or ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 新階段或正常訊息出現時，將視窗帶回目前輸出位置；不移動寫入游標或修改歷史。
+    /// </summary>
+    internal static void ShowLatestOutput()
+    {
+        if (!OperatingSystem.IsWindows() || Console.IsOutputRedirected || !IsViewingHistory())
+        {
+            return;
+        }
+        try
+        {
+            int height = Console.WindowHeight;
+            int top = Math.Clamp(Console.CursorTop - height + 1, 0, Math.Max(0, Console.BufferHeight - height));
+            Console.SetWindowPosition(Console.WindowLeft, top);
+        }
+        catch (Exception exception) when (exception is IOException or PlatformNotSupportedException or ArgumentOutOfRangeException)
+        {
+            // 尺寸同時變動時，保留正常輸出，不讓捲動控制影響流程。
+        }
+    }
+
+    /// <summary>
     /// 只有從游標尾端回讀的文字與上次輸出一致時才清除；不支援或內容已變更時交還一般輸出。
     /// </summary>
     internal static bool TryClear(string previousText, int cursorLeft, int cursorTop, int bufferWidth)

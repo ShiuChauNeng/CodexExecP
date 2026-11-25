@@ -106,6 +106,14 @@ internal static class ConsoleWorkflowOutput
             }
 
             bool sameProgress = ReferenceEquals(_progressKey, key);
+            if (sameProgress && WindowsConsoleProgress.IsViewingHistory())
+            {
+                return;
+            }
+            if (!sameProgress)
+            {
+                WindowsConsoleProgress.ShowLatestOutput();
+            }
             bool redrawing = false;
             if (sameProgress)
             {
@@ -225,6 +233,7 @@ internal static class ConsoleWorkflowOutput
     {
         lock (Sync)
         {
+            WindowsConsoleProgress.ShowLatestOutput();
             FinishProgressLine();
             WriteColored(write, color, ansiColor);
         }
