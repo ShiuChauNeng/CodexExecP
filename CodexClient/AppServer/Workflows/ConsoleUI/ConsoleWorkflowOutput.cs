@@ -106,13 +106,9 @@ internal static class ConsoleWorkflowOutput
             }
 
             bool sameProgress = ReferenceEquals(_progressKey, key);
-            if (sameProgress && WindowsConsoleProgress.IsViewingHistory())
+            if (!WindowsConsoleProgress.ShowLatestOutput(preserveHistory: sameProgress))
             {
                 return;
-            }
-            if (!sameProgress)
-            {
-                WindowsConsoleProgress.ShowLatestOutput();
             }
             bool redrawing = false;
             if (sameProgress)

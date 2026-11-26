@@ -50,7 +50,8 @@ internal static class WindowsConsoleResizeChecks
         Console.WriteLine("PASS: exact-width wrapping and rapid shrink/restore continue refreshing without duplicate records");
         Console.WriteLine("PASS: native redraw preserves history and intervening output instead of clearing an inferred range");
         Console.WriteLine("PASS: reading history suppresses heartbeat drawing, scrolling back resumes it and a new stage follows the cursor");
-        return 4;
+        Console.WriteLine("PASS: heartbeat returns from blank space at the bottom after resizing");
+        return 5;
     }
 
     /// <summary>
@@ -131,10 +132,22 @@ internal static class WindowsConsoleResizeChecks
 
             Console.SetWindowPosition(0, 0);
             ConsoleWorkflowOutput.WriteProgressLine(new object(), "[15:35:42] [Implement] Next stage", null);
-            Assert(Console.WindowTop > 0 && !WindowsConsoleProgress.IsViewingHistory(), "A new stage did not return to the current output.");
+            Assert(Console.WindowTop > 0 && IsCursorVisible(), "A new stage did not return to the current output.");
             Console.SetWindowPosition(0, 0);
             ConsoleWorkflowOutput.WriteLine("Question or completion message");
-            Assert(!WindowsConsoleProgress.IsViewingHistory(), "A normal message did not return to the current output.");
+            Assert(IsCursorVisible(), "A normal message did not return to the current output.");
+
+            stage = "scrolling to blank space after resizing";
+            key = Reset();
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(6), null);
+            ResizeBuffer(40);
+            Console.SetWindowPosition(0, Console.BufferHeight - Console.WindowHeight);
+            Assert(Console.CursorTop < Console.WindowTop, "Expected the viewport below the current output.");
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(7), null);
+            screen = ReadScreen();
+            Assert(IsCursorVisible(), "Heartbeat did not return from blank space to the current output.");
+            Assert(Count(screen, "[15:35:41]") == 1 && screen.Contains("1分7秒") && screen.Contains("HISTORY SENTINEL"),
+                "Waiting output was stale, duplicated, or damaged history after returning to the current output.");
             File.WriteAllText(report, "PASS");
         }
         catch (Exception error)
@@ -204,6 +217,16 @@ internal static class WindowsConsoleResizeChecks
     /// 計算實際畫面中的訊息筆數。
     /// </summary>
     private static int Count(string text, string value) => text.Split(value, StringSplitOptions.None).Length - 1;
+
+    /// <summary>
+    /// 確認實際輸出游標位於測試視窗的可見列。
+    /// </summary>
+    private static bool IsCursorVisible()
+    {
+        int cursor = Console.CursorTop;
+        int top = Console.WindowTop;
+        return cursor >= top && cursor < top + Console.WindowHeight;
+    }
 
     /// <summary>
     /// 確認真實 Console 結果，不符時附上原因。

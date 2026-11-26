@@ -9,45 +9,34 @@ namespace CodexClient.AppServer.Workflows.ConsoleUI;
 internal static class WindowsConsoleProgress
 {
     /// <summary>
-    /// 判斷使用者是否已將可見範圍移離目前輸出位置，避免心跳打斷歷史閱讀。
+    /// 將游標帶回可見範圍。心跳期間若視窗在游標上方，保留歷史畫面並回傳 false。
     /// </summary>
-    internal static bool IsViewingHistory()
+    internal static bool ShowLatestOutput(bool preserveHistory = false)
     {
         if (!OperatingSystem.IsWindows() || Console.IsOutputRedirected)
         {
-            return false;
+            return true;
         }
         try
         {
             int top = Console.WindowTop;
             int cursor = Console.CursorTop;
-            return cursor < top || cursor >= top + Console.WindowHeight;
-        }
-        catch (Exception exception) when (exception is IOException or PlatformNotSupportedException or ArgumentOutOfRangeException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// 新階段或正常訊息出現時，將視窗帶回目前輸出位置；不移動寫入游標或修改歷史。
-    /// </summary>
-    internal static void ShowLatestOutput()
-    {
-        if (!OperatingSystem.IsWindows() || Console.IsOutputRedirected || !IsViewingHistory())
-        {
-            return;
-        }
-        try
-        {
             int height = Console.WindowHeight;
-            int top = Math.Clamp(Console.CursorTop - height + 1, 0, Math.Max(0, Console.BufferHeight - height));
-            Console.SetWindowPosition(Console.WindowLeft, top);
+            if (preserveHistory && cursor >= top + height)
+            {
+                return false;
+            }
+            if (cursor < top || cursor >= top + height)
+            {
+                int latestTop = Math.Clamp(cursor - height + 1, 0, Math.Max(0, Console.BufferHeight - height));
+                Console.SetWindowPosition(Console.WindowLeft, latestTop);
+            }
         }
         catch (Exception exception) when (exception is IOException or PlatformNotSupportedException or ArgumentOutOfRangeException)
         {
             // 尺寸同時變動時，保留正常輸出，不讓捲動控制影響流程。
         }
+        return true;
     }
 
     /// <summary>
