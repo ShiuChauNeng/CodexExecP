@@ -45,4 +45,14 @@ public static class CodexModels
     /// 模型 ID：gpt-6.1-terra。
     /// </summary>
     public const string Gpt61Terra = "gpt-6.1-terra";
+
+    /// <summary>
+    /// 模型 ID：gpt-6.2-sol。
+    /// </summary>
+    public const string Gpt62Sol = "gpt-6.2-sol";
+
+    /// <summary>
+    /// 模型 ID：gpt-6.2-astra。
+    /// </summary>
+    public const string Gpt62Astra = "gpt-6.2-astra";
 }
