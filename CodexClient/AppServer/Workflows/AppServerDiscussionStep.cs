@@ -11,6 +11,11 @@ namespace CodexClient.AppServer.Workflows;
 public sealed class AppServerDiscussionStep : AppServerWorkflowStep
 {
     /// <summary>
+    /// 要討論的已完成 Workflow 結果；指定時使用其整體判定與歷程，未指定則使用目前流程的先前步驟。
+    /// </summary>
+    public AppServerWorkflowResult? SourceResult { get; init; }
+
+    /// <summary>
     /// 以固定討論指令、沙箱模式與模型建立互動步驟；預設唯讀。
     /// </summary>
     public AppServerDiscussionStep(string name, string prompt, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly, string? model = null)
@@ -33,7 +38,23 @@ public sealed class AppServerDiscussionStep : AppServerWorkflowStep
     internal override string CreatePrompt(AppServerWorkflowContext context)
     {
         string prompt = base.CreatePrompt(context);
-        var history = context.Steps.Select((step, index) => new
+        var jsonOptions = new JsonSerializerOptions
+        {
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+            WriteIndented = true
+        };
+        if (SourceResult is { } source)
+        {
+            prompt += "\n\n要討論的 Workflow 整體結果：\n" + JsonSerializer.Serialize(new
+            {
+                source.Succeeded,
+                source.FailedStep,
+                source.StopReason,
+                Error = source.Error?.Message,
+                source.Decisions
+            }, jsonOptions);
+        }
+        var history = (SourceResult?.Steps ?? context.Steps).Select((step, index) => new
         {
             RunOrder = index + 1,
             step.Name,
@@ -47,10 +68,6 @@ public sealed class AppServerDiscussionStep : AppServerWorkflowStep
         });
         return prompt + "\n\n先依上述指令說明目前結果；後續回答使用者的追問，完整回答放在 message。" +
             "每次回答完成使用 state=completed；需要釐清問題時才使用 needs_input。是否繼續討論由使用者決定。" +
-            "\n\n本次 Workflow 已執行紀錄：\n" + JsonSerializer.Serialize(history, new JsonSerializerOptions
-            {
-                Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
-                WriteIndented = true
-            });
+            "\n\n要討論的 Workflow 已執行紀錄：\n" + JsonSerializer.Serialize(history, jsonOptions);
     }
 }

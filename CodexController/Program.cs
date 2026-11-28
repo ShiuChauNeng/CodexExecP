@@ -234,13 +234,6 @@ try
             "只整理 DecisionDemo.Result.txt 的文字格式：移除多餘空白行，保留單行原始值與一個行尾換行。不得變更 ERROR／EMPTY 值，不修改 Spec 或驗收報表。")
         {
             Options = writeOptions
-        })
-        .Add(new AppServerDiscussionStep(
-            WorkflowNames.Discussion,
-            "說明這次流程的實作、驗收結果與需求決策；後續依使用者問題做唯讀調查，不修改檔案。",
-            model: writeOptions.Model)
-        {
-            ReadDecisionsFrom = [WorkflowNames.Implement]
         });
 
     var planReporter = new ConsoleWorkflowPlanReporter();
@@ -252,6 +245,25 @@ try
     resultReporter.Report(result);
 
     stopwatch.Stop();
+
+    Console.Write("是否進入討論環節？[Y/N] ");
+    string? discussionChoice = (await Console.In.ReadLineAsync())?.Trim();
+    if (string.Equals(discussionChoice, "Y", StringComparison.OrdinalIgnoreCase))
+    {
+        var discussionWorkflow = new AppServerWorkflow(client, workspaceRoot, handler.AnswerAsync,
+            new ConsoleWorkflowProgressReporter())
+            .Add(new AppServerDiscussionStep(
+                WorkflowNames.Discussion,
+                "說明這次流程的整體結果、停止原因、實作、驗收與需求決策；後續依使用者問題做唯讀調查，不修改檔案。",
+                model: writeOptions.Model)
+            {
+                SourceResult = result
+            });
+
+        planReporter.Report(discussionWorkflow);
+        var discussionResult = await discussionWorkflow.RunAsync();
+        resultReporter.Report(discussionResult);
+    }
 }
 catch (Exception ex)
 {

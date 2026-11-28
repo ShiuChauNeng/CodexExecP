@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
 using CodexClient.AppServer.Workflows.ConsoleUI;
@@ -38,6 +40,39 @@ internal static class DiscussionStepChecks
             Assert(client.Calls[3].Prompt.Contains("Second question"));
             Assert(client.Calls.Skip(1).Take(3).All(call => call.Options.Sandbox == CodexSandboxMode.ReadOnly &&
                 call.Options.Model == CodexModels.Gpt61Sol));
+        });
+        await Check("a separate discussion receives the final success or stopped result without changing it", async () =>
+        {
+            foreach (bool stopOnIssues in new[] { false, true })
+            {
+                var client = new Client { IssueOnTurn = 1 };
+                var source = await Workflow(client, (_, _) => Answer(""))
+                    .Add(new("Implementation", "Run implementation") { StopOnIssues = stopOnIssues }).RunAsync();
+                Assert(source.Succeeded == !stopOnIssues);
+                var discussion = await Workflow(client, (_, _) => Answer(""))
+                    .Add(new AppServerDiscussionStep("Discuss", "Explain the final result") { SourceResult = source }).RunAsync();
+                string prompt = client.Calls.Last().Prompt;
+                Assert(discussion.Succeeded && discussion.Steps.Count == 1 && source.Steps.Count == 1);
+                Assert(prompt.Contains(stopOnIssues ? "\"Succeeded\": false" : "\"Succeeded\": true"));
+                Assert(prompt.Contains("Implementation") && prompt.Contains("Unresolved issue"));
+                Assert(!stopOnIssues || prompt.Contains(source.StopReason!));
+                Assert(source.Succeeded == !stopOnIssues && client.Calls.Count == 2);
+                Assert(client.Calls[0].Thread != client.Calls[1].Thread);
+            }
+        });
+        await Check("a separate discussion includes the original execution error and stop reason", async () =>
+        {
+            var client = new Client { FailOnTurn = 1 };
+            var source = await Workflow(client, (_, _) => Answer(""))
+                .Add(new("Implementation", "Run implementation")).RunAsync();
+            Assert(!source.Succeeded && source.Error is not null);
+            var discussion = await Workflow(client, (_, _) => Answer(""))
+                .Add(new AppServerDiscussionStep("Discuss", "Explain failure") { SourceResult = source }).RunAsync();
+            string prompt = client.Calls.Last().Prompt;
+            var jsonOptions = new JsonSerializerOptions { Encoder = JavaScriptEncoder.Create(UnicodeRanges.All) };
+            Assert(discussion.Succeeded && prompt.Contains(JsonSerializer.Serialize(source.Error!.Message, jsonOptions)) &&
+                prompt.Contains(JsonSerializer.Serialize(source.StopReason, jsonOptions)));
+            Assert(source.FailedStep == "Implementation" && source.Steps.Count == 1);
         });
         await Check("a blank question ends normally without another AI turn", async () =>
         {
