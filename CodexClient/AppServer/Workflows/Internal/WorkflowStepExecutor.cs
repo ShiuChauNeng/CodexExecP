@@ -78,6 +78,20 @@ internal sealed class WorkflowStepExecutor
             execution = await _runner.RunCoreAsync(threadId, prompt,
                 input.AnswerAsync, step.Options with { WorkspaceRoot = _workspaceRoot }, step.DataSchema, token, diagnostics.Add);
 
+            if (step is AppServerDiscussionStep)
+            {
+                while (!step.StopOnIssues || execution.Issues.Count == 0)
+                {
+                    string question = await input.AskFollowUpAsync(execution, token);
+                    if (string.IsNullOrWhiteSpace(question))
+                    {
+                        break;
+                    }
+                    execution = await _runner.RunCoreAsync(threadId, question,
+                        input.AnswerAsync, step.Options with { WorkspaceRoot = _workspaceRoot }, step.DataSchema, token, diagnostics.Add);
+                }
+            }
+
             if (step is AppServerAcceptanceStep acceptance)
             {
                 acceptanceDecision = acceptance.Evaluate(execution, knownCriterionIds!);

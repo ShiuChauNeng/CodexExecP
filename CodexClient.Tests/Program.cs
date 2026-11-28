@@ -205,6 +205,7 @@ passed += await AcceptanceChecks.RunAsync(workspace);
 passed += await WorkflowRoutingChecks.RunAsync(workspace);
 passed += await AcceptanceStepChecks.RunAsync(workspace);
 passed += await WorkflowDecisionChecks.RunAsync(workspace);
+passed += await DiscussionStepChecks.RunAsync(workspace);
 passed += await WorkflowResultChecks.RunAsync(workspace);
 passed += WorkflowPlanChecks.Run(workspace);
 passed += await WorkflowColorChecks.RunAsync();

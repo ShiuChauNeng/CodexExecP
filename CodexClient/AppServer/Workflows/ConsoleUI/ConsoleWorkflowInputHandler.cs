@@ -28,7 +28,7 @@ public sealed class ConsoleWorkflowInputHandler
         foreach (string question in request.Questions)
         {
             WriteQuestion(question, request.IsDecisionConfirmation);
-            string answer = await ReadAnswerAsync(request.IsDecisionConfirmation, cancellationToken);
+            string answer = await ReadAnswerAsync(request.IsDecisionConfirmation, cancellationToken, request.IsDiscussion);
             cancellationToken.ThrowIfCancellationRequested();
             answers.Add(answer);
         }
@@ -40,6 +40,12 @@ public sealed class ConsoleWorkflowInputHandler
     /// </summary>
     private static void WriteHeader(AppServerWorkflowInputRequest request)
     {
+        if (request.IsDiscussion)
+        {
+            ConsoleWorkflowOutput.WriteQuestionLine($"[{request.StepName}] 討論結果：");
+            ConsoleWorkflowOutput.WriteLine(request.Message);
+            return;
+        }
         if (request.IsDecisionConfirmation)
         {
             ConsoleWorkflowOutput.WriteLine("");
@@ -69,16 +75,17 @@ public sealed class ConsoleWorkflowInputHandler
     }
 
     /// <summary>
-    /// 顯示輸入提示並讀取回答；需求決策確認僅接受 1 或 2。
+    /// 顯示輸入提示並讀取回答；需求決策確認僅接受 1 或 2，討論可用空白或輸入結束離開。
     /// </summary>
-    private static async Task<string> ReadAnswerAsync(bool decisionConfirmation, CancellationToken cancellationToken)
+    private static async Task<string> ReadAnswerAsync(bool decisionConfirmation, CancellationToken cancellationToken, bool allowEmpty = false)
     {
         string answer;
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
             ConsoleWorkflowOutput.WriteAnswerPrompt("請輸入答案：");
-            answer = await Console.In.ReadLineAsync(cancellationToken) ?? throw new OperationCanceledException("使用者輸入已結束。");
+            answer = await Console.In.ReadLineAsync(cancellationToken)
+                ?? (allowEmpty ? "" : throw new OperationCanceledException("使用者輸入已結束。"));
             if (decisionConfirmation)
             {
                 answer = answer.Trim();
@@ -88,7 +95,7 @@ public sealed class ConsoleWorkflowInputHandler
                 }
             }
         }
-        while (string.IsNullOrWhiteSpace(answer) || decisionConfirmation && answer is not ("1" or "2"));
+        while (!allowEmpty && string.IsNullOrWhiteSpace(answer) || decisionConfirmation && answer is not ("1" or "2"));
         return answer;
     }
 }

@@ -63,7 +63,8 @@ public class AppServerWorkflowStep
     public TimeSpan? InputTimeout { get; init; }
 
     /// <summary>
-    /// 最多允許幾輪問答；0 表示不允許提問，null 表示不限。
+    /// 最多允許幾輪問答；包含討論步驟等待下一個問題的輪次，需求決策確認不另計。
+    /// 0 表示不允許提問，null 表示不限。
     /// </summary>
     public int? MaxInputRounds { get; init; }
 

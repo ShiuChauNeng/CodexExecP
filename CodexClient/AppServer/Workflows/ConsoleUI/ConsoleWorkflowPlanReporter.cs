@@ -50,7 +50,11 @@ public sealed class ConsoleWorkflowPlanReporter
                     ConsoleWorkflowOutput.WriteLine($"{indent}必要項目：{string.Join("、", acceptance.RequiredCriterionIds)}");
                 }
             }
-            else if (step.NextStep is not null)
+            if (step is AppServerDiscussionStep)
+            {
+                ConsoleWorkflowOutput.WriteLine($"{indent}討論：沿用同一 thread 持續追問，直接按 Enter 結束");
+            }
+            if (step is not AppServerAcceptanceStep && step.NextStep is not null)
             {
                 ConsoleWorkflowOutput.WriteLine($"{indent}分流：執行後動態決定");
             }

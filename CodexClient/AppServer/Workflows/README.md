@@ -16,6 +16,26 @@
 Console 顯示、輸入與通知位於 `ConsoleUI/`，namespace 為 `CodexClient.AppServer.Workflows.ConsoleUI`，不決定驗收是否通過。
 執行狀態仍在每次 Run 或每次步驟執行時建立。
 
+## 持續討論步驟
+
+`AppServerDiscussionStep` 可加入任意步驟之間；先執行提示，再顯示 AI 的完整回答並等待使用者追問。
+每次 AI 回報 `completed` 只代表本輪回答完成，不會直接結束此步驟。使用者輸入空白後才繼續下一步。
+
+```csharp
+workflow.Add(new AppServerDiscussionStep(
+    WorkflowNames.Discussion,
+    "說明前面步驟的結果，並依使用者的問題做唯讀調查，不修改檔案。",
+    model: CodexModels.Gpt61Sol));
+```
+
+- 預設唯讀；可像一般 Step 指定 `Options`、thread 與 `NextStep`。
+- 初始提示會附加本次 Run 已執行步驟的結果、issues、驗收資料及已確認決策；後續問題不重送整份紀錄，沿用同一個 thread。
+- 共用 Workflow 的輸入 callback；`IsDiscussion=true` 時，`Message` 是上一輪回答，請回傳一個問題字串，空白代表結束。Console handler 也將 EOF 視為結束討論。
+- AI 使用 `needs_input` 釐清問題時仍走原有問答與需求決策確認；使用者自行輸入的追問不自動記錄為需求決策。
+- `MaxInputRounds` 預設不限；若設定上限，使用者輸入問題（含空白結束）及 AI 提問共用輪次，達上限仍依原規則停止。等待使用者時暫停 `ExecutionTimeout`，`InputTimeout` 與整體 `Timeout` 仍生效。
+- 結果列表只加入一筆討論 Step，`Execution` 保留最後一次 AI 回答；步驟診斷保留各輪資料，耗時包含整段討論與等待。
+- `StopOnIssues`、執行錯誤、取消與自訂驗證仍生效。若前一步已停止 Workflow，後面的討論 Step 不會執行；它不是流程停止後的 callback。
+
 ## 狀態層級與流程影響
 
 判定由外往內進行：App Server turn → AI 任務回覆 → 驗收資料 → C# 驗收決策 → Workflow 結果。

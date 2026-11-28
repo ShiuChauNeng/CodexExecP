@@ -1,5 +1,8 @@
 # Workflow 回歸檢查
 
+完整檢查包含 `AppServerDiscussionStep` 多輪問答、同一 thread 延續、Enter／EOF 結束、
+AI 釐清提問、執行計時暫停、輸入限制、取消與錯誤停止；使用模擬用戶端，不呼叫真實 AI。
+
 觀察等待行刷新與切換到問答的版面，不呼叫真實 AI，回答會自動填入：
 
 ```powershell

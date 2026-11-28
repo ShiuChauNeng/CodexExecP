@@ -66,6 +66,11 @@ public static class WorkflowNames
     public const string Report = "Report";
 
     /// <summary>
+    /// 與使用者持續討論執行結果，直到使用者決定結束。
+    /// </summary>
+    public const string Discussion = "Discussion";
+
+    /// <summary>
     /// 以範圍與名稱組成固定的「範圍.名稱」，例如 FeatureA.Acceptance。
     /// 相同輸入回傳相同名稱，不自動編號；呼叫端仍須確保步驟名稱唯一。
     /// </summary>

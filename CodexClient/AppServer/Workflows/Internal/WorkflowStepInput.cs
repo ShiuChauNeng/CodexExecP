@@ -35,7 +35,28 @@ internal sealed class WorkflowStepInput
     /// <summary>
     /// 檢查問答次數並暫停執行額度，限時收集回答與需求決策後恢復計時。
     /// </summary>
-    internal async Task<IReadOnlyList<string>> AnswerAsync(TaskInputRequest request, CancellationToken cancellationToken)
+    internal Task<IReadOnlyList<string>> AnswerAsync(TaskInputRequest request, CancellationToken cancellationToken)
+        => ReadAsync(request, false, cancellationToken);
+
+    /// <summary>
+    /// 顯示上一輪完整回答並取得下一個問題；空白表示使用者結束討論。
+    /// </summary>
+    internal async Task<string> AskFollowUpAsync(TaskRunResult result, CancellationToken cancellationToken)
+    {
+        string message = result.Message;
+        if (result.Issues.Count > 0)
+        {
+            message += "\n" + string.Join("\n", result.Issues.Select(issue => $"- {issue}"));
+        }
+        var answers = await ReadAsync(new(result.ThreadId, result.TurnId, message,
+            ["請輸入追問內容（直接按 Enter 結束討論）："]), true, cancellationToken);
+        return answers[0];
+    }
+
+    /// <summary>
+    /// 共用輸入次數、暫停計時、逾時與取消處理；討論輸入允許空白結束。
+    /// </summary>
+    private async Task<IReadOnlyList<string>> ReadAsync(TaskInputRequest request, bool discussion, CancellationToken cancellationToken)
     {
         if (_step.MaxInputRounds is { } max && _inputRounds >= max)
         {
@@ -51,7 +72,7 @@ internal sealed class WorkflowStepInput
         }
         try
         {
-            var answers = await CollectAnswersAsync(request, inputCancellation.Token).WaitAsync(inputCancellation.Token);
+            var answers = await CollectAnswersAsync(request, discussion, inputCancellation.Token).WaitAsync(inputCancellation.Token);
             inputCancellation.Token.ThrowIfCancellationRequested();
             _budget.Resume();
             return answers;
@@ -63,27 +84,38 @@ internal sealed class WorkflowStepInput
     }
 
     /// <summary>
-    /// 暫停執行並取得使用者對模型問題的回答。
+    /// 暫停執行並取得模型問題的回答或使用者的下一個討論問題。
     /// </summary>
     /// <param name="request">使用者輸入要求。</param>
+    /// <param name="discussion">是否允許使用者輸入空白結束討論。</param>
     /// <param name="cancellationToken">用於取消等待輸入的權杖。</param>
     /// <returns>非同步回傳使用者回答。</returns>
-    private async Task<IReadOnlyList<string>> CollectAnswersAsync(TaskInputRequest request, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> CollectAnswersAsync(TaskInputRequest request, bool discussion, CancellationToken cancellationToken)
     {
         _progress.Update(AppServerWorkflowStatus.WaitingForInput, $"等待使用者回答，共 {request.Questions.Count} 個問題。", _step.Name, request.ThreadId);
 
         // 原始問答與決策確認共用輸入時限；只有明確確認的原始問答才記錄。
-        var answers = await _answerQuestionsAsync(new(_step.Name, request.ThreadId, request.TurnId, request.Message, request.Questions), cancellationToken).WaitAsync(cancellationToken);
+        var answers = await _answerQuestionsAsync(new(_step.Name, request.ThreadId, request.TurnId, request.Message, request.Questions)
+        {
+            IsDiscussion = discussion
+        }, cancellationToken).WaitAsync(cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (answers is null || answers.Count != request.Questions.Count || answers.Any(string.IsNullOrWhiteSpace))
+        if (answers is null || answers.Count != request.Questions.Count ||
+            answers.Any(answer => answer is null || !discussion && string.IsNullOrWhiteSpace(answer)))
         {
-            throw new ArgumentException("Provide one nonempty answer for each question.");
+            throw new ArgumentException("Provide one answer for each question; only discussion input may be empty.");
         }
         var answerSnapshot = answers.ToArray();
-        await RecordConfirmedDecisionsAsync(request, answerSnapshot, cancellationToken);
+        if (!discussion)
+        {
+            await RecordConfirmedDecisionsAsync(request, answerSnapshot, cancellationToken);
+        }
 
-        _progress.Update(AppServerWorkflowStatus.Running, "已收到回答，繼續等待 AI 執行結果。", _step.Name, request.ThreadId);
+        if (!discussion || !string.IsNullOrWhiteSpace(answerSnapshot[0]))
+        {
+            _progress.Update(AppServerWorkflowStatus.Running, "已收到回答，繼續等待 AI 執行結果。", _step.Name, request.ThreadId);
+        }
 
         return Array.AsReadOnly(answerSnapshot);
     }

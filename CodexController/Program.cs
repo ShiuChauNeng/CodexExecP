@@ -1,4 +1,4 @@
-﻿using CodexClient.Acceptance;
+using CodexClient.Acceptance;
 using CodexClient.AppServer;
 using CodexClient.AppServer.Workflows;
 using CodexClient.AppServer.Workflows.ConsoleUI;
@@ -6,9 +6,6 @@ using CodexClient.Exec;
 using CodexClient.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text.Unicode;
 
 
 Stopwatch stopwatch = new Stopwatch();
@@ -237,6 +234,13 @@ try
             "只整理 DecisionDemo.Result.txt 的文字格式：移除多餘空白行，保留單行原始值與一個行尾換行。不得變更 ERROR／EMPTY 值，不修改 Spec 或驗收報表。")
         {
             Options = writeOptions
+        })
+        .Add(new AppServerDiscussionStep(
+            WorkflowNames.Discussion,
+            "說明這次流程的實作、驗收結果與需求決策；後續依使用者問題做唯讀調查，不修改檔案。",
+            model: writeOptions.Model)
+        {
+            ReadDecisionsFrom = [WorkflowNames.Implement]
         });
 
     var planReporter = new ConsoleWorkflowPlanReporter();
@@ -248,7 +252,6 @@ try
     resultReporter.Report(result);
 
     stopwatch.Stop();
-    await AskAboutResultAsync(client, workflow, result, handler, writeOptions.Model);
 }
 catch (Exception ex)
 {
@@ -256,90 +259,3 @@ catch (Exception ex)
 }
 stopwatch.Stop();
 Console.WriteLine("Spend time : " + stopwatch.ElapsedMilliseconds);
-
-static async Task AskAboutResultAsync(
-    IAppServerClient client,
-    AppServerWorkflow workflow,
-    AppServerWorkflowResult result,
-    ConsoleWorkflowInputHandler handler,
-    string? model)
-{
-    if (Console.IsInputRedirected)
-    {
-        return;
-    }
-
-    Console.Write("要針對這次結果追問嗎？[Y/N] ");
-    string? choice = (await Console.In.ReadLineAsync())?.Trim();
-    if (!string.Equals(choice, "Y", StringComparison.OrdinalIgnoreCase))
-    {
-        return;
-    }
-
-    var runner = new CodexTaskRunner(client);
-    var options = new AppServerOptions { Sandbox = CodexSandboxMode.ReadOnly, Model = model };
-    string? threadId = null;
-    while (true)
-    {
-        Console.Write("請輸入問題（直接按 Enter 結束）：");
-        string? question = await Console.In.ReadLineAsync();
-        if (string.IsNullOrWhiteSpace(question))
-        {
-            return;
-        }
-
-        string task = question;
-        if (threadId is null)
-        {
-            task = BuildResultReviewPrompt(result, question);
-            threadId = await client.StartThreadAsync(workflow.WorkspaceRoot);
-        }
-        var answer = await runner.RunAsync(threadId, task,
-            (request, token) => handler.AnswerAsync(
-                new("結果追問", request.ThreadId, request.TurnId, request.Message, request.Questions), token),
-            options);
-        Console.WriteLine(answer.Message);
-        foreach (string issue in answer.Issues)
-        {
-            Console.WriteLine($"- {issue}");
-        }
-    }
-}
-
-static string BuildResultReviewPrompt(AppServerWorkflowResult result, string question)
-{
-    var context = new
-    {
-        result.Succeeded,
-        result.FailedStep,
-        result.StopReason,
-        Error = result.Error?.Message,
-        result.Decisions,
-        Steps = result.Steps.Select((step, index) => new
-        {
-            RunOrder = index + 1,
-            step.Name,
-            step.Accepted,
-            AcceptanceDecision = step.AcceptanceDecision?.ToString(),
-            Error = step.Error?.Message,
-            Message = step.Execution?.Message,
-            Issues = step.Execution?.Issues,
-            Data = step.Execution?.Data
-        })
-    };
-    var jsonOptions = new JsonSerializerOptions
-    {
-        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
-        WriteIndented = true
-    };
-    return $"""
-        你負責回答使用者對這次 Workflow 結果的問題。所有回合只做唯讀調查並將對問題的完整回答放在 message。
-
-        本次 Workflow 紀錄：
-        {JsonSerializer.Serialize(context, jsonOptions)}
-
-        使用者問題：
-        {question}
-        """;
-}
-
