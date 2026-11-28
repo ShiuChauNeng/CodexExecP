@@ -269,9 +269,9 @@ static async Task AskAboutResultAsync(
         return;
     }
 
-    Console.Write("要針對這次結果追問嗎？[y/N] ");
+    Console.Write("要針對這次結果追問嗎？[Y/N] ");
     string? choice = (await Console.In.ReadLineAsync())?.Trim();
-    if (!string.Equals(choice, "y", StringComparison.OrdinalIgnoreCase))
+    if (!string.Equals(choice, "Y", StringComparison.OrdinalIgnoreCase))
     {
         return;
     }
