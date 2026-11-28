@@ -110,6 +110,7 @@ internal static class ConsoleWorkflowOutput
             {
                 return;
             }
+            using var viewport = sameProgress ? WindowsConsoleProgress.PreserveViewport() : null;
             bool redrawing = false;
             if (sameProgress)
             {

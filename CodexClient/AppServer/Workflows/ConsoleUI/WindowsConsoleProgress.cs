@@ -40,6 +40,53 @@ internal static class WindowsConsoleProgress
     }
 
     /// <summary>
+    /// 保留等待刷新前的可見範圍，避免主控台因覆寫游標而自動捲至底部。
+    /// </summary>
+    internal static IDisposable? PreserveViewport()
+    {
+        if (!OperatingSystem.IsWindows() || Console.IsOutputRedirected)
+        {
+            return null;
+        }
+        try
+        {
+            return new Viewport(Console.WindowLeft, Console.WindowTop, Console.WindowWidth, Console.WindowHeight,
+                Console.BufferWidth, Console.BufferHeight);
+        }
+        catch (Exception exception) when (exception is IOException or PlatformNotSupportedException or ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record Viewport(int Left, int Top, int Width, int Height, int BufferWidth, int BufferHeight) : IDisposable
+    {
+        /// <summary>
+        /// 尺寸未變時還原可見範圍；刷新途中若發生縮放，交由主控台保留新的配置。
+        /// </summary>
+        public void Dispose()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return;
+            }
+            try
+            {
+                if (Console.WindowWidth == Width && Console.WindowHeight == Height &&
+                    Console.BufferWidth == BufferWidth && Console.BufferHeight == BufferHeight &&
+                    (Console.WindowLeft != Left || Console.WindowTop != Top))
+                {
+                    Console.SetWindowPosition(Left, Top);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or PlatformNotSupportedException or ArgumentOutOfRangeException)
+            {
+                // 縮放可能與還原同時發生，不讓顯示錯誤影響流程。
+            }
+        }
+    }
+
+    /// <summary>
     /// 只有從游標尾端回讀的文字與上次輸出一致時才清除；不支援或內容已變更時交還一般輸出。
     /// </summary>
     internal static bool TryClear(string previousText, int cursorLeft, int cursorTop, int bufferWidth)

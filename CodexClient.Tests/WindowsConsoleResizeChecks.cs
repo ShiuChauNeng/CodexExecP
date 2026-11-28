@@ -51,7 +51,8 @@ internal static class WindowsConsoleResizeChecks
         Console.WriteLine("PASS: native redraw preserves history and intervening output instead of clearing an inferred range");
         Console.WriteLine("PASS: reading history suppresses heartbeat drawing, scrolling back resumes it and a new stage follows the cursor");
         Console.WriteLine("PASS: heartbeat returns from blank space at the bottom after resizing");
-        return 5;
+        Console.WriteLine("PASS: enlarged question output followed by shrinking preserves scrolling while the waiting cursor is visible");
+        return 6;
     }
 
     /// <summary>
@@ -148,6 +149,36 @@ internal static class WindowsConsoleResizeChecks
             Assert(IsCursorVisible(), "Heartbeat did not return from blank space to the current output.");
             Assert(Count(screen, "[15:35:41]") == 1 && screen.Contains("1分7秒") && screen.Contains("HISTORY SENTINEL"),
                 "Waiting output was stale, duplicated, or damaged history after returning to the current output.");
+
+            stage = "enlarge, answer, shrink and scroll with a visible cursor";
+            key = Reset();
+            for (int index = 0; index < 40; index++)
+            {
+                Console.WriteLine($"HISTORY {index}");
+            }
+            Console.SetWindowSize(Math.Min(100, Console.LargestWindowWidth), Math.Min(30, Console.LargestWindowHeight));
+            ConsoleWorkflowOutput.WriteQuestionLine("Question shown in the enlarged window");
+            ConsoleWorkflowOutput.WriteAnswerPrompt("Answer: ");
+            Console.WriteLine("Confirmed answer");
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(6), ConsoleColor.DarkGray);
+            ResizeBuffer(40);
+            waitingCursor = Console.GetCursorPosition();
+            int visibleTop = waitingCursor.Top - 3;
+            Console.SetWindowPosition(0, visibleTop);
+            Assert(IsCursorVisible(), "Expected the waiting cursor inside the scrolled viewport.");
+            for (int index = 7; index <= 9; index++)
+            {
+                ConsoleWorkflowOutput.WriteProgressLine(key, Message(index), ConsoleColor.DarkGray);
+                Assert(Console.WindowTop == visibleTop, "Heartbeat moved the viewport with the waiting cursor still visible.");
+            }
+            screen = ReadScreen(80);
+            Assert(Count(screen, "[15:35:41]") == 1 && screen.Contains("1分9秒") && screen.Contains("Confirmed answer"),
+                "Resumed waiting output was stale, duplicated, or erased the answer.");
+            Console.SetWindowPosition(0, 0);
+            ConsoleWorkflowOutput.WriteProgressLine(key, Message(10), ConsoleColor.DarkGray);
+            Assert(Console.WindowTop == 0, "Heartbeat interrupted history after answering and shrinking.");
+            ConsoleWorkflowOutput.WriteProgressLine(new object(), "Next stage after answering", null);
+            Assert(IsCursorVisible(), "A new stage did not reveal output after answering and shrinking.");
             File.WriteAllText(report, "PASS");
         }
         catch (Exception error)
